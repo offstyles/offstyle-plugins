@@ -16,8 +16,6 @@ enum
 {
 	TimerVersion_Unknown,
 	TimerVersion_shavit,
-	TimerVersion_bTimes2_0,
-	TimerVersion_bTimes1_8_3,
 	TimerVersion_FuckItHops,
 	TimerVersion_END
 }
@@ -27,8 +25,6 @@ char gS_TimerVersion[][] =
 {
 	"Unknown Timer",
 	"shavit",
-	"bTimes 2.0",
-	"bTimes 1.8.3",
 	"FuckItHops Timer"
 };
 
@@ -36,8 +32,6 @@ char gS_TimerNatives[][] =
 {
 	"<none>",
 	"Shavit_ChangeClientStyle", // shavit
-	"Timer_GetZoneCount", // btimes 2.0
-	"Timer_IsPointInsideZone", // btimes 1.8
 	"tTimer_GetTimerState" // fuckithops
 };
 
@@ -48,7 +42,6 @@ int gI_Tickrate = 0;
 Database gH_Database = null;
 char gS_MySQLPrefix[32];
 char gS_PasswordHash[64];
-Handle gH_bTimesTimer = null;
 ConVar gCV_PublicIP = null;
 char gS_AuthKey[64];
 ConVar gCV_Authentication = null;
@@ -65,7 +58,7 @@ public Plugin myinfo =
 	name = "Offstyle Database",
 	author = "shavit (Modified by Jeft & Tommy)",
 	description = "Provides Offstyles with a database of bhop records.",
-	version = "0.0.1",
+	version = "0.0.2",
 	url = ""
 };
 
@@ -101,14 +94,6 @@ public void OnAllPluginsLoaded()
 			GetTimerSQLPrefix(gS_MySQLPrefix, sizeof(gS_MySQLPrefix));
 		}
 
-		case TimerVersion_bTimes2_0, TimerVersion_bTimes1_8_3:
-		{
-			if((gH_Database = SQL_Connect("timer", true, sError, sizeof(sError))) == null)
-			{
-				SetFailState("SourceJump plugin startup failed. Reason: %s", sError);
-			}
-		}
-
 		case TimerVersion_FuckItHops:
 		{
 			if((gH_Database = SQL_Connect("TimerDB65", true, sError, sizeof(sError))) == null)
@@ -139,7 +124,6 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
-	gH_bTimesTimer = null;
 	gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
 }
 
@@ -173,7 +157,7 @@ public Action Command_GetAllWRs(int client, int args)
 
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
 {
-	if(style != 0 || track != 0 || gI_TimerVersion != TimerVersion_shavit)
+	if(track != 0 || gI_TimerVersion != TimerVersion_shavit)
 	{
 		return;
 	}
@@ -196,12 +180,12 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 	char sDate[32];
 	FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", GetTime());
 
-	SendCurrentWR(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
+	SendCurrentWR(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style);
 }
 
 public void FuckItHops_OnWorldRecord(int client, int style, float time, int jumps, int strafes, float sync, int track)
 {
-	if(style != 0 || track != 0 || gI_TimerVersion != TimerVersion_FuckItHops)
+	if( track != 0 || gI_TimerVersion != TimerVersion_FuckItHops)
 	{
 		return;
 	}
@@ -219,153 +203,9 @@ public void FuckItHops_OnWorldRecord(int client, int style, float time, int jump
 	char sDate[32];
 	FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", GetTime());
 
-	SendCurrentWR(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
+	SendCurrentWR(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style);
 }
 
-public void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition)
-{
-	if(Style != 0 || Type != 0 || (gI_TimerVersion != TimerVersion_bTimes1_8_3 && gI_TimerVersion != TimerVersion_bTimes2_0))
-	{
-		return;
-	}
-
-	int iRank = 0;
-
-	switch(gI_TimerVersion)
-	{
-		case TimerVersion_bTimes2_0:
-		{
-			if(tas)
-			{
-				SourceJump_DebugLog("OnTimerFinished_Post: TAS detected, invalidated submission.");
-
-				return;
-			}
-
-			iRank = NewPosition;
-
-			SourceJump_DebugLog("OnTimerFinished_Post: %d -> %d.", OldPosition, NewPosition);
-		}
-
-		// nonsense. dumb ass decided it's a good idea to add a new parameter IN BETWEEN the fucking signature of the forward?!??!?!??
-		case TimerVersion_bTimes1_8_3:
-		{
-			iRank = OldPosition;
-
-			SourceJump_DebugLog("OnTimerFinished_Post: %d -> %d.", view_as<int>(NewTime), OldPosition);
-		}
-	}
-
-	if(iRank != 1)
-	{
-		return;
-	}
-
-	// OBVIOUSLY THERE IS NO FUCKING STRAFES/SYNC IN THE FUCKING FORWARD SO WE NEED TO QUERY FOR IT
-	// FUCK YOU TOO BLACKY
-	char sMap[64];
-	GetCurrentMap(sMap, sizeof(sMap));
-	GetMapDisplayName(sMap, sMap, sizeof(sMap));
-
-	char sSteamID[32];
-	GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
-
-	char sName[MAX_NAME_LENGTH];
-	GetClientName(client, sName, sizeof(sName));
-
-	char sDate[32];
-	FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", GetTime());
-
-	DataPack hPack = new DataPack();
-	hPack.WriteString(sMap);
-	hPack.WriteString(sSteamID);
-	hPack.WriteString(sName);
-	hPack.WriteString(sDate);
-
-	delete gH_bTimesTimer;
-	gH_bTimesTimer = CreateTimer(3.0, Timer_bTimesCallback, hPack, TIMER_FLAG_NO_MAPCHANGE);
-
-	SourceJump_DebugLog("OnTimerFinished_Post: Preparing record by %N on %s (%f) for submission to database.", client, sMap, Time);
-}
-
-public Action Timer_bTimesCallback(Handle timer, any data)
-{
-	DataPack hPack = view_as<DataPack>(data);
-	hPack.Reset();
-
-	char sMap[64];
-	hPack.ReadString(sMap, sizeof(sMap));
-
-	char sQuery[1024];
-
-	if(gI_TimerVersion == TimerVersion_bTimes1_8_3)
-	{
-		FormatEx(sQuery, sizeof(sQuery),
-			"SELECT m.MapName, u.SteamID AS steamid, u.User, a.Time, a.Sync, a.Strafes, a.Jumps, a.Timestamp FROM times a " ...
-			"JOIN (SELECT MIN(Time) time, MapID, Style, Type FROM times GROUP by MapID, Style, Type) b " ...
-			"JOIN (SELECT MapID, MapName FROM maps) m " ...
-			"JOIN players u ON a.Time = b.Time AND a.PlayerID = u.PlayerID AND a.MapID = b.MapID AND b.MapID = m.MapID AND a.Style = b.Style AND a.Type = b.Type " ...
-			"WHERE a.Style = 0 AND a.Type = 0 AND m.MapName = '%s' " ...
-			"LIMIT 1;", sMap);
-	}
-	else if(gI_TimerVersion == TimerVersion_bTimes2_0)
-	{
-		FormatEx(sQuery, sizeof(sQuery),
-			"SELECT m.MapName, u.SteamID AS steamid, u.User, a.Time, a.Sync, a.Strafes, a.Jumps, a.Timestamp FROM times a " ...
-			"JOIN (SELECT MIN(Time) time, MapID, Style, Type, tas FROM times GROUP by MapID, Style, Type, tas) b " ...
-			"JOIN (SELECT MapID, MapName FROM maps) m " ...
-			"JOIN players u ON a.Time = b.Time AND a.PlayerID = u.PlayerID AND a.MapID = b.MapID AND b.MapID = m.MapID AND a.Style = b.Style AND a.Type = b.Type AND a.tas = b.tas " ...
-			"WHERE a.Style = 0 AND a.Type = 0 AND a.tas = 0 AND m.MapName = '%s' " ...
-			"LIMIT 1;", sMap);
-	}
-
-	gH_Database.Query(SQL_GetCurrentWR_Callback, sQuery, data, DBPrio_Low);
-
-	gH_bTimesTimer = null;
-
-	return Plugin_Stop;
-}
-
-public void SQL_GetCurrentWR_Callback(Database db, DBResultSet results, const char[] error, any data)
-{
-	DataPack hPack = view_as<DataPack>(data);
-	hPack.Reset();
-
-	char sMap[64];
-	hPack.ReadString(sMap, sizeof(sMap));
-
-	char sSteamID[32];
-	hPack.ReadString(sSteamID, sizeof(sSteamID));
-
-	char sName[MAX_NAME_LENGTH];
-	hPack.ReadString(sName, sizeof(sName));
-
-	char sDate[32];
-	hPack.ReadString(sDate, sizeof(sDate));
-
-	delete hPack;
-
-	if(results == null)
-	{
-		LogError("[SourceJump] bTimes error - query for GetCurrentWR failed (%s). Error: %s", sMap, error);
-
-		return;
-	}
-
-	if(!results.FetchRow())
-	{
-		LogError("[SourceJump] bTimes error - could not fetch world record for map %s.", sMap);
-
-		return;
-	}
-
-	float fTime = results.FetchFloat(3);
-	float fSync = results.FetchFloat(4);
-	int iStrafes = results.FetchInt(5);
-	int iJumps = results.FetchInt(6);
-
-	SendCurrentWR(sMap, sSteamID, sName, sDate, fTime, fSync, iStrafes, iJumps);
-}
 
 public void Callback_SendNewWR(HTTPResponse response, any value)
 {
@@ -380,7 +220,7 @@ public void Callback_SendNewWR(HTTPResponse response, any value)
 	SourceJump_DebugLog("Callback_SendNewWR: Successfully submitted record to SJ database.");
 }
 
-void SendCurrentWR(char[] sMap, char[] sSteamID, char[] sName, char[] sDate, float time, float sync, int strafes, int jumps)
+void SendCurrentWR(char[] sMap, char[] sSteamID, char[] sName, char[] sDate, float time, float sync, int strafes, int jumps, int style)
 {
 	if(!IsPasswordFetched())
 	{
@@ -412,7 +252,9 @@ void SendCurrentWR(char[] sMap, char[] sSteamID, char[] sName, char[] sDate, flo
 	hJSON.SetInt("jumps", jumps);
 	hJSON.SetString("date", sDate);
 	hJSON.SetInt("tickrate", gI_Tickrate);
+	hJSON.SetInt("style", style);
 	hJSON.SetNull("replayfile");
+	
 
 	char sPath[PLATFORM_MAX_PATH];
 
@@ -421,16 +263,6 @@ void SendCurrentWR(char[] sMap, char[] sSteamID, char[] sName, char[] sDate, flo
 		case TimerVersion_shavit:
 		{
 			BuildPath(Path_SM, sPath, sizeof(sPath), "data/replaybot/0/%s.replay", sMap);
-		}
-
-		case TimerVersion_bTimes1_8_3:
-		{
-			BuildPath(Path_SM, sPath, sizeof(sPath), "data/btimes/%s_0_0.rec", sMap);
-		}
-
-		case TimerVersion_bTimes2_0:
-		{
-			BuildPath(Path_SM, sPath, sizeof(sPath), "data/btimes/%s_0_0_0.txt", sMap);
 		}
 
 		case TimerVersion_FuckItHops:
@@ -564,34 +396,14 @@ void SendListOfRecords()
 	{
 		case TimerVersion_shavit:
 		{
+			// TODO: Modify the other timers to submit style time
 			FormatEx(sQuery, sizeof(sQuery),
-				"SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date FROM %splayertimes a " ...
+				"SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date, a.style FROM %splayertimes a " ...
 				"JOIN (SELECT MIN(time) time, map, style, track FROM %splayertimes GROUP by map, style, track) b " ...
 				"JOIN %susers u ON a.time = b.time AND a.auth = u.auth AND a.map = b.map AND a.style = b.style AND a.track = b.track " ...
-				"WHERE a.style = 0 AND a.track = 0 " ...
+				// "WHERE a.style = 0 AND a.track = 0 " ...
+				"WHERE a.track = 0" ...
 				"ORDER BY a.date DESC;", gS_MySQLPrefix, gS_MySQLPrefix, gS_MySQLPrefix);
-		}
-
-		case TimerVersion_bTimes2_0:
-		{
-			strcopy(sQuery, sizeof(sQuery),
-				"SELECT m.MapName, u.SteamID AS steamid, u.User, a.Time, a.Sync, a.Strafes, a.Jumps, a.Timestamp FROM times a " ...
-				"JOIN (SELECT MIN(Time) time, MapID, Style, Type, tas FROM times GROUP by MapID, Style, Type, tas) b " ...
-				"JOIN (SELECT MapID, MapName FROM maps) m " ...
-				"JOIN players u ON a.Time = b.Time AND a.PlayerID = u.PlayerID AND a.MapID = b.MapID AND b.MapID = m.MapID AND a.Style = b.Style AND a.Type = b.Type AND a.tas = b.tas " ...
-				"WHERE a.Style = 0 AND a.Type = 0 AND a.tas = 0 " ...
-				"ORDER BY a.Timestamp DESC;");
-		}
-
-		case TimerVersion_bTimes1_8_3:
-		{
-			strcopy(sQuery, sizeof(sQuery),
-				"SELECT m.MapName, u.SteamID AS steamid, u.User, a.Time, a.Sync, a.Strafes, a.Jumps, a.Timestamp FROM times a " ...
-				"JOIN (SELECT MIN(Time) time, MapID, Style, Type FROM times GROUP by MapID, Style, Type) b " ...
-				"JOIN (SELECT MapID, MapName FROM maps) m " ...
-				"JOIN players u ON a.Time = b.Time AND a.PlayerID = u.PlayerID AND a.MapID = b.MapID AND b.MapID = m.MapID AND a.Style = b.Style AND a.Type = b.Type " ...
-				"WHERE a.Style = 0 AND a.Type = 0 " ...
-				"ORDER BY a.Timestamp DESC;");
 		}
 
 		case TimerVersion_FuckItHops:
@@ -608,6 +420,7 @@ void SendListOfRecords()
 	gH_Database.Query(SQL_GetList_Callback, sQuery, 0, DBPrio_Low);
 }
 
+// this was used for btimes, but i nuked that so its unused now, will keep incase its useful (never)
 void SteamID2To3(const char[] steam2, char[] buffer, int maxlen)
 {
 	strcopy(buffer, maxlen, steam2);
@@ -640,11 +453,6 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
 				Format(sSteamID, sizeof(sSteamID), "[U:1:%s]", sSteamID);
 			}
 		}
-
-		case TimerVersion_bTimes1_8_3, TimerVersion_bTimes2_0:
-		{
-			SteamID2To3(sSteamID, sSteamID, sizeof(sSteamID));
-		}
 	}
 
 	char sName[MAX_NAME_LENGTH];
@@ -663,6 +471,7 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
 	hJSON.SetInt("jumps", results.FetchInt(6));
 	hJSON.SetString("date", sDate);
 	hJSON.SetInt("tickrate", gI_Tickrate);
+	hJSON.SetInt("style", results.FetchInt(7));
 
 	return hJSON;
 }
