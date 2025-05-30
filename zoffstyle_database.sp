@@ -1,5 +1,7 @@
 #include <sourcemod>
+#include <keyvalues>
 #include <ripext>
+#include <sha1>
 
 #define API_BASE_URL "http://127.0.0.1:8000/api"
 
@@ -11,13 +13,11 @@ native float Shavit_GetWorldRecord(int style, int track);
 forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
-forward void FuckItHops_OnWorldRecord(int client, int style, float time, int jumps, int strafes, float sync, int track);
 
 enum
 {
 	TimerVersion_Unknown,
 	TimerVersion_shavit,
-	TimerVersion_FuckItHops,
 	TimerVersion_END
 }
 
@@ -26,14 +26,12 @@ char gS_TimerVersion[][] =
 {
 	"Unknown Timer",
 	"shavit",
-	"FuckItHops Timer"
 };
 
 char gS_TimerNatives[][] =
 {
 	"<none>",
 	"Shavit_ChangeClientStyle", // shavit
-	"tTimer_GetTimerState" // fuckithops
 };
 
 // SteamIDs which can fetch records from the server
@@ -49,7 +47,8 @@ ConVar gCV_PublicIP = null;
 char gS_AuthKey[64];
 ConVar gCV_Authentication = null;
 ConVar sv_cheats = null;
-
+StringMap gM_StyleMapping = null;
+char gS_StyleHash[160];
 
 public Plugin myinfo =
 {
@@ -107,14 +106,6 @@ public void OnAllPluginsLoaded()
 			gH_Database = GetTimerDatabaseHandle();
 			GetTimerSQLPrefix(gS_MySQLPrefix, sizeof(gS_MySQLPrefix));
 		}
-
-		case TimerVersion_FuckItHops:
-		{
-			if((gH_Database = SQL_Connect("TimerDB65", true, sError, sizeof(sError))) == null)
-			{
-				SetFailState("OSdb plugin startup failed. Reason: %s", sError);
-			}
-		}
 	}
 
     if (strlen(gS_AuthKey) == 0) {
@@ -127,23 +118,129 @@ public void OnAllPluginsLoaded()
 
     // hHTTPRequest = new HTTPRequest(API_BASE_URL..."/style_mapping");
     // AddHeaders(hHTTPRequest);
-    // hHTTPRequest.Post(hJSONObject, OnHttpDummyCallback);
+    // hHTTPRequest.Post(hJSONObject, Callback_OnStyleMapping);
 
     // delete hJSONObject;
+
+	GetStyleMapping();
 }
 
+void GetStyleMapping() {
+	char temp[160];
+	temp = gS_StyleHash;
+	HashStyleConfig();
+
+	if (strcmp(temp, gS_StyleHash) == 0) {
+		return;
+	}
+
+    HTTPRequest hHTTPRequest;
+    JSONObject hJSONObject = new JSONObject();
+
+    hHTTPRequest = new HTTPRequest(API_BASE_URL..."/style_mapping");
+    AddHeaders(hHTTPRequest);
+
+	char sPath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, sPath, sizeof(sPath), "configs/shavit-styles.cfg");
+
+	if (FileExists(sPath)) {
+		File fFile = OpenFile(sPath, "rb");
+
+		if (fFile != null && fFile.Seek(0, SEEK_END)) {
+			int iSize = (fFile.Position + 1);
+			fFile.Seek(0, SEEK_SET);
+
+			char[] sFileContents = new char[iSize + 1];
+			fFile.ReadString(sFileContents, (iSize + 1), iSize);
+			delete fFile;
+
+			char[] sFileContentsEncoded = new char[iSize * 2];
+			Crypt_Base64Encode(sFileContents, sFileContentsEncoded, (iSize * 2), iSize);
+
+			hJSONObject.SetString("data", sFileContentsEncoded);
+		} else {
+			delete hJSONObject;
+			delete hHTTPRequest;
+			return;
+		}
+	} else {
+		SetFailState("Couldnt find configs/shavit-styles.cfg");
+		return;
+	}
+
+    hHTTPRequest.Post(hJSONObject, Callback_OnStyleMapping);
+
+    delete hJSONObject;
+}
+
+int ConvertStyle(int style) {
+	char s[16];
+	IntToString(style, s, sizeof(s));
+
+	int out;
+	if (gM_StyleMapping.GetValue(s, out)) {
+		return out;
+	}
+
+	return -1;
+}
+
+void HashStyleConfig() {
+	char sPath[PLATFORM_MAX_PATH];
+	char hash[160];
+	BuildPath(Path_SM, sPath, sizeof(sPath), "configs/shavit-styles.cfg");
+	if (FileExists(sPath)) {
+		File fFile = OpenFile(sPath, "r");
+		if (!SHA1File(fFile, hash)) {
+			LogError("Failed to hash shavit-styles.cfg");
+			delete fFile;
+			return;
+		}
+	} else {
+		LogError("[OSdb] Failed to find shavit-styles.cfg");
+		return;
+	}
+
+	gS_StyleHash = hash;
+}
 
 public void Callback_OnStyleMapping(HTTPResponse resp, any value) {
 	if (resp.Status != HTTPStatus_OK || resp.Data == null) {
 		return;
 	}
 
+	JSONObject data = view_as<JSONObject>(resp.Data);
+	char s_Data[512];
+	data.GetString("data", s_Data, sizeof(s_Data));
 
+	if (gM_StyleMapping != null) {
+		delete gM_StyleMapping;
+	}
+	gM_StyleMapping = new StringMap();
+
+	const int MAX_STYLES = 128; // fucking Hope people arent adding this many....
+	char parts[MAX_STYLES][8];
+
+	int count = ExplodeString(s_Data, ",", parts, sizeof(parts), sizeof(parts[]));
+
+	for (int i = 0; i < count - 1; i += 2) {
+		char key[8];
+		strcopy(key, sizeof(key), parts[i]);
+
+		int ivalue = StringToInt(parts[i+1]);
+
+		gM_StyleMapping.SetValue(key, ivalue);
+	}
+	
 }
 
 public void OnMapStart()
 {
 	gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
+}
+
+public void OnMapEnd() {
+	GetStyleMapping();
 }
 
 public Action Command_SendAllWRs(int client, int args) {
@@ -198,8 +295,19 @@ public Action Command_SendAllWRs(int client, int args) {
 // }
 
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp) {
-	if (track != 0 || gI_TimerVersion != TimerVersion_shavit || oldtime >= time) {
+	// oldtime <= time is a filter to prevent non-pbs from being submitted
+	// also means times wont submit if they never beat ur pb, like in the case
+	// of a skip being removed, but thats up the to server to delete the time
+	if (track != 0 || gI_TimerVersion != TimerVersion_shavit || oldtime <= time) {
+		// skipping record
 		return;
+	}
+	
+	bool isWR;
+	if (time > Shavit_GetWorldRecord(style, track)) {
+		isWR = false;
+	} else {
+		isWR = true;
 	}
 
 	char sMap[64];
@@ -212,40 +320,23 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     char sName[MAX_NAME_LENGTH];
     GetClientName(client, sName, sizeof(sName));
 
-    char sDate[32];
-    FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", GetTime());
+    int sDate = GetTime();
 
-    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style);
+    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, isWR);
 }
 
-public void FuckItHops_OnWorldRecord(int client, int style, float time, int jumps, int strafes, float sync, int track) {
-    if (track != 0 || gI_TimerVersion != TimerVersion_FuckItHops) {
-        return;
-    }
-
-    char sMap[64];
-	GetCurrentMap(sMap, sizeof(sMap));
-	GetMapDisplayName(sMap, sMap, sizeof(sMap));
-
-	char sSteamID[32];
-	GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
-
-	char sName[MAX_NAME_LENGTH];
-	GetClientName(client, sName, sizeof(sName));
-
-	char sDate[32];
-	FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", GetTime());
-
-	SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style);
-}
-
-void SendRecord(char[] sMap, char[] sSteamID, char[] sName, char[] sDate, float time, float sync, int strafes, int jumps, int style) {
+void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR) {
     if (sv_cheats.BoolValue) {
         LogError("[OSdb] Attempted to submit record with sv_cheats enabled. Record data: %s | %s | %s | %s | %f | %f | %d | %d",
             sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
 
         return;
     }
+
+	int n_Style = ConvertStyle(style);
+	if (n_Style == -1) {
+		return;
+	}
 
     HTTPRequest hHTTPRequest;
     JSONObject hJSON = new JSONObject();
@@ -259,33 +350,17 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, char[] sDate, float 
     hJSON.SetFloat("sync", sync);
     hJSON.SetInt("strafes", strafes);
     hJSON.SetInt("jumps", jumps);
-    hJSON.SetString("date", sDate);
+    hJSON.SetInt("date", sDate);
     hJSON.SetInt("tickrate", gI_Tickrate);
-    hJSON.SetInt("style", style);
+    hJSON.SetInt("style", n_Style);
     hJSON.SetNull("replayfile");
 
+
     char sPath[PLATFORM_MAX_PATH];
-    switch (gI_TimerVersion) {
-        case TimerVersion_shavit: {
-			// TODO: i believe the /0/ is tied to the auto style or the track(main/bonus)
-			// this should check for the style record instead and also be skipped if the time
-			// isnt a record
+	BuildPath(Path_SM, sPath, sizeof(sPath), "data/replaybot/%d/%s.replay", style, sMap);
 
-            // BuildPath(Path_SM, sPath, sizeof(sPath), "data/replaybot/0/%s.replay", sMap);
-        }
-
-        case TimerVersion_FuckItHops: {
-            // format: no header. read 6 cells at once. x/y/z yaw/pitch buttons. until eof
-			char sSteamIDCopy[32];
-			strcopy(sSteamIDCopy, sizeof(sSteamIDCopy), sSteamID);
-			ReplaceString(sSteamIDCopy, sizeof(sSteamIDCopy), "[U:1:", "");
-			ReplaceString(sSteamIDCopy, sizeof(sSteamIDCopy), "]", "");
-
-			BuildPath(Path_SM, sPath, sizeof(sPath), "data/tTimer/%s/0-0-%d.rec", sMap, StringToInt(sSteamIDCopy));
-        }
-    }
-
-	if(FileExists(sPath))
+	// since we arent considering bonuses, we only have to think about track 0 (main)
+	if(FileExists(sPath) && isWR)
 	{
 		File fFile = OpenFile(sPath, "rb");
 
@@ -339,24 +414,6 @@ void SendRecordDatabase() {
 				"WHERE a.track = 0" ...
 				"ORDER BY a.date DESC;", gS_MySQLPrefix, gS_MySQLPrefix, gS_MySQLPrefix);
         }
-
-		case TimerVersion_FuckItHops:
-		{
-            // Original, incase we fuck it up somehow
-            // strcopy(sQuery, sizeof(sQuery),
-			// 	"SELECT a.MapName, a.SteamID AS steamid, a.Name, a.Time, a.Sync, a.Strafes, a.Jumps, a.Date FROM timelist a " ...
-			// 	"JOIN (SELECT MIN(Time) Time, MapName FROM timelist WHERE Type = 0 AND Style = 0 GROUP by MapName, Style, Type) b " ...
-			// 	"ON a.Time = b.Time AND a.MapName = b.MapName " ...
-			// 	"WHERE a.Type = 0 AND a.Style = 0 " ...
-			// 	"ORDER BY Date DESC;");
-
-			strcopy(sQuery, sizeof(sQuery),
-				"SELECT a.MapName, a.SteamID AS steamid, a.Name, a.Time, a.Sync, a.Strafes, a.Jumps, a.Date FROM timelist a " ...
-				"JOIN (SELECT MIN(Time) Time, MapName FROM timelist WHERE Type = 0 GROUP by MapName, Style, Type) b " ...
-				"ON a.Time = b.Time AND a.MapName = b.MapName " ...
-				"WHERE a.Type = 0" ...
-				"ORDER BY Date DESC;");
-		}
     }
 
     gH_Database.Query(SQL_GetRecords_Callback, sQuery, 0, DBPrio_Low);
@@ -399,7 +456,7 @@ JSONObject GetTimeJsonFromResult(DBResultSet results) {
 
     switch (gI_TimerVersion) {
         // we dont Really need to do this switch case shit anymore, but whatever
-        case TimerVersion_shavit, TimerVersion_FuckItHops: 
+        case TimerVersion_shavit: 
 		{
             if (StrContains(sSteamID, "[U:1:]", false) == -1) {
                 Format(sSteamID, sizeof(sSteamID), "[u:1:%s]", sSteamID);
