@@ -341,7 +341,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     HTTPRequest hHTTPRequest;
     JSONObject hJSON = new JSONObject();
 
-    hHTTPRequest = new HTTPRequest(API_BASE_URL..."/record");
+    hHTTPRequest = new HTTPRequest(API_BASE_URL..."/submit_record");
     AddHeaders(hHTTPRequest);
     hJSON.SetString("map", sMap);
     hJSON.SetString("steamid", sSteamID);
