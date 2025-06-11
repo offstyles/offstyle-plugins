@@ -299,7 +299,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
 	// oldtime <= time is a filter to prevent non-pbs from being submitted
 	// also means times wont submit if they never beat ur pb, like in the case
 	// of a skip being removed, but thats up the to server to delete the time
-	if (track != 0 || gI_TimerVersion != TimerVersion_shavit || oldtime <= time) {
+	if (track != 0 || gI_TimerVersion != TimerVersion_shavit || (oldtime != 0.0 && oldtime <= time)) {
 		// skipping record
 		return;
 	}
