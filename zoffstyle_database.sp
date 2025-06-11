@@ -13,6 +13,7 @@ native float Shavit_GetWorldRecord(int style, int track);
 forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
+forward void Shavit_IsPracticeMode(int client);
 
 enum
 {
@@ -298,7 +299,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
 	// oldtime <= time is a filter to prevent non-pbs from being submitted
 	// also means times wont submit if they never beat ur pb, like in the case
 	// of a skip being removed, but thats up the to server to delete the time
-	if (track != 0 || gI_TimerVersion != TimerVersion_shavit || (oldtime != 0.0 && oldtime <= time)) {
+	if (track != 0 || gI_TimerVersion != TimerVersion_shavit || (oldtime != 0.0 && oldtime <= time) || Shavit_IsPracticeMode(client)) {
 		// skipping record
 		return;
 	}
