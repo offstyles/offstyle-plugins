@@ -237,11 +237,10 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value) {
 public void OnMapStart()
 {
 	gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
-	GetStyleMapping();
 }
 
 public void OnMapEnd() {
-	
+	GetStyleMapping();
 }
 
 public Action Command_SendAllWRs(int client, int args) {
