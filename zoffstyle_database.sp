@@ -10,10 +10,10 @@
 #pragma semicolon 1
 
 native float Shavit_GetWorldRecord(int style, int track);
+native bool Shavit_IsPracticeMode(int client);
 forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
-forward void Shavit_IsPracticeMode(int client);
 
 enum
 {
