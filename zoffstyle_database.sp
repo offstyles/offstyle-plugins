@@ -70,7 +70,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
-	RegConsoleCmd("sj_get_all_wrs", Command_SendAllWRs, "Fetches WRs to OSdb.");
+	RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs, "Fetches WRs to OSdb.");
 
 	// gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	gCV_PublicIP = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
