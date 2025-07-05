@@ -165,6 +165,7 @@ void GetStyleMapping()
             hJSONObject.SetString("data", sFileContentsEncoded);
         }
         else {
+            delete fFile;
             delete hJSONObject;
             delete hHTTPRequest;
             return;
@@ -208,6 +209,8 @@ void HashStyleConfig()
             delete fFile;
             return;
         }
+
+        delete ffile;
     }
     else {
         LogError("[OSdb] Failed to find shavit-styles.cfg");
@@ -227,6 +230,8 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
     JSONObject data = view_as<JSONObject>(resp.Data);
     char       s_Data[512];
     data.GetString("data", s_Data, sizeof(s_Data));
+    // dont think we need to do it here, but doing it anyway
+    delete data;
 
     if (gM_StyleMapping.Size > 0)
     {
@@ -403,6 +408,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
 
             hJSON.SetString("replayfile", sFileContentsEncoded);
         }
+        delete fFile;
     }
 
     hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
@@ -551,6 +557,7 @@ void GetTimerSQLPrefix(char[] buffer, int maxlen)
 
     if (fFile == null)
     {
+        delete fFile;
         SetFailState("Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
     }
 
