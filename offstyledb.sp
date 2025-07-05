@@ -67,6 +67,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 public void OnPluginStart()
 {
     RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs, "Fetches WRs to OSdb.");
+    RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap, "Prints the current style mapping.")
 
     // gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
@@ -165,6 +166,7 @@ void GetStyleMapping()
             hJSONObject.SetString("data", sFileContentsEncoded);
         }
         else {
+            delete fFile;
             delete hJSONObject;
             delete hHTTPRequest;
             return;
@@ -208,6 +210,8 @@ void HashStyleConfig()
             delete fFile;
             return;
         }
+
+        delete ffile;
     }
     else {
         LogError("[OSdb] Failed to find shavit-styles.cfg");
@@ -221,12 +225,16 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 {
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
+        LogError("[OSdb] Style Mapping failed: status = %d, data = null", resp.Status)
+        SetFailState("Style Mapping returned non-ok response");
         return;
     }
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     char       s_Data[512];
     data.GetString("data", s_Data, sizeof(s_Data));
+    // dont think we need to do it here, but doing it anyway
+    delete data;
 
     if (gM_StyleMapping.Size > 0)
     {
@@ -283,6 +291,30 @@ public Action Command_SendAllWRs(int client, int args)
     ReplyToCommand(client, "[OSdb] Preparing list of records...");
     SendRecordDatabase();
 
+    return Plugin_Handled;
+}
+
+public Action Command_ViewStyleMap(int client, int args) {
+
+    if (gM_StyleMapping == null || gM_StyleMapping.Size == 0) {
+        PrintToChat(client, "[OSdb] Style map is empty or null");
+        return Plugin_Handled;
+    }
+    
+    StringMapSnapshot snapshot = gM_StyleMapping.Snapshot();
+
+    int count = snapshot.Length;
+
+    char key[256], value[256];
+    for (int i = 0; i < count; i++)
+    {
+        snapshot.GetKey(i, key, sizeof(key));
+        gM_StyleMapping.GetString(key, value, sizeof(value));
+
+        PrintToChat(client, "[StyleMap] %s: %s", key, value);
+    }
+
+    delete snapshot;
     return Plugin_Handled;
 }
 
@@ -403,6 +435,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
 
             hJSON.SetString("replayfile", sFileContentsEncoded);
         }
+        delete fFile;
     }
 
     hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
@@ -551,6 +584,7 @@ void GetTimerSQLPrefix(char[] buffer, int maxlen)
 
     if (fFile == null)
     {
+        delete fFile;
         SetFailState("Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
     }
 
