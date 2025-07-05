@@ -225,6 +225,8 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 {
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
+        LogError("[OSdb] Style Mapping failed: status = %d, data = null", resp.Status)
+        SetFailState("Style Mapping returned non-ok response");
         return;
     }
 
