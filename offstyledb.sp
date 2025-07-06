@@ -485,7 +485,7 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
     if (results == null || results.RowCount == 0)
     {
         // no records found in selection
-
+        LogError("[osdb] SQL_GetRecords_Callback results are null or rowcount is 0, rowcount = %d", results.RowCount);
         return;
     }
 
@@ -497,7 +497,7 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
         hArray.Push(hJSON);
         delete hJSON;
     }
-
+    PrintToServer("[osdb] Finished parsing results, sending bulk records now...");
     HTTPRequest hHTTPRequest;
     JSONObject  hRecordsList = new JSONObject();
 
