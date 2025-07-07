@@ -473,7 +473,7 @@ void SendRecordDatabase()
             FormatEx(sQuery, sizeof(sQuery),
                      "SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date, a.style FROM %splayertimes a " ... "JOIN (SELECT MIN(time) time, map, style, track FROM %splayertimes GROUP by map, style, track) b " ... "JOIN %susers u ON a.time = b.time AND a.auth = u.auth AND a.map = b.map AND a.style = b.style AND a.track = b.track " ...
                      // "WHERE a.style = 0 AND a.track = 0 " ...
-                     "WHERE a.track = 0" ... "ORDER BY a.date DESC;",
+                     "WHERE a.track = 0 " ... "ORDER BY a.date DESC;",
                      gS_MySQLPrefix, gS_MySQLPrefix, gS_MySQLPrefix);
         }
     }
