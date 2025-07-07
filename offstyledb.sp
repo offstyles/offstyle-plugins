@@ -483,10 +483,15 @@ void SendRecordDatabase()
 
 public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char[] error, any data)
 {
-    if (results == null || results.RowCount == 0)
+    if (results == null)
     {
-        // no records found in selection
-        LogError("[osdb] SQL_GetRecords_Callback results are null or rowcount is 0, rowcount = %d", results.RowCount);
+        LogError("[osdb] SQL_GetRecords_Callback results are null, SQL error: %s", error);
+        return;
+    }
+
+    if (results.RowCount == 0)
+    {
+        LogError("[osdb] SQL_GetRecords_Callback rowcount is 0");
         return;
     }
 
