@@ -500,7 +500,9 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
     while (results.FetchRow())
     {
         JSONObject hJSON = GetTimeJsonFromResult(results);
-        hArray.Push(hJSON);
+        if (hJSON.GetInt("style") != -1) {
+            hArray.Push(hJSON);
+        }
         delete hJSON;
     }
     PrintToServer("[osdb] Finished parsing results, sending bulk records now...");
@@ -540,9 +542,6 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     char sName[MAX_NAME_LENGTH];
     results.FetchString(2, sName, MAX_NAME_LENGTH);
 
-    char sDate[32];
-    FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", results.FetchInt(7));
-
     JSONObject hJSON = new JSONObject();
     hJSON.SetString("map", sMap);
     hJSON.SetString("steamid", sSteamID);
@@ -551,9 +550,9 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     hJSON.SetFloat("sync", results.FetchFloat(4));
     hJSON.SetInt("strafes", results.FetchInt(5));
     hJSON.SetInt("jumps", results.FetchInt(6));
-    hJSON.SetString("date", sDate);
+    hJSON.SetInt("date", results.FetchInt(7));
     hJSON.SetInt("tickrate", gI_Tickrate);
-    hJSON.SetInt("style", results.FetchInt(7));
+    hJSON.SetInt("style", ConvertStyle(results.FetchInt(8)));
 
     return hJSON;
 }
