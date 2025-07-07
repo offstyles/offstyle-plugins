@@ -36,7 +36,8 @@ char gS_TimerNatives[][] = {
 
 // SteamIDs which can fetch records from the server
 int gI_SteamIDWhitelist[] = {
-    903787042    // jeft
+    903787042,      // jeft
+    401295170       // tommy
 };
 
 int       gI_Tickrate = 0;
