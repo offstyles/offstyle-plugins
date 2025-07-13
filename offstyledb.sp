@@ -109,7 +109,10 @@ public void OnAllPluginsLoaded()
             GetTimerSQLPrefix(gS_MySQLPrefix, sizeof(gS_MySQLPrefix));
         }
     }
+}
 
+public void OnConfigsExecuted()
+{
     if (strlen(gS_AuthKey) == 0)
     {
         gCV_Authentication.GetString(gS_AuthKey, sizeof(gS_AuthKey));
