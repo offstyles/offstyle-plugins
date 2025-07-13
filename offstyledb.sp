@@ -116,15 +116,6 @@ public void OnAllPluginsLoaded()
     }
     gCV_Authentication.SetString("");
 
-    // HTTPRequest hHTTPRequest;
-    // JSONObject hJSONObject = new JSONObject();
-
-    // hHTTPRequest = new HTTPRequest(API_BASE_URL..."/style_mapping");
-    // AddHeaders(hHTTPRequest);
-    // hHTTPRequest.Post(hJSONObject, Callback_OnStyleMapping);
-
-    // delete hJSONObject;
-
     GetStyleMapping();
 }
 
