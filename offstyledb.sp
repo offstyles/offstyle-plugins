@@ -50,6 +50,13 @@ ConVar    sv_cheats          = null;
 StringMap gM_StyleMapping    = null;
 char      gS_StyleHash[160];
 
+char      gS_BulkCode[64];
+bool      gB_IsProcessingBatches = false;
+int       gI_CurrentBatch = 0;
+int       gI_TotalRecords = 0;
+ArrayList  gA_AllRecords = null;
+int       gI_BatchSize = 5000;
+
 public Plugin myinfo =
 {
     name        = "Offstyle Database",
@@ -67,8 +74,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
-    RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs, "Fetches WRs to OSdb.");
-    RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap, "Prints the current style mapping.");
+    RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs);
+    RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
+    RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
 
     // gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
@@ -262,6 +270,15 @@ public void OnMapEnd()
     GetStyleMapping();
 }
 
+public void OnPluginEnd()
+{
+    if (gA_AllRecords != null)
+    {
+        delete gA_AllRecords;
+        gA_AllRecords = null;
+    }
+}
+
 public Action Command_SendAllWRs(int client, int args)
 {
     int  iSteamID = GetSteamAccountID(client);
@@ -282,9 +299,14 @@ public Action Command_SendAllWRs(int client, int args)
         return Plugin_Handled;
     }
 
-    // TODO: Send list of records
-    ReplyToCommand(client, "[OSdb] Preparing list of records...");
-    SendRecordDatabase();
+    if (gB_IsProcessingBatches)
+    {
+        ReplyToCommand(client, "[OSdb] Already processing batches. Please wait for current operation to complete.");
+        return Plugin_Handled;
+    }
+
+    ReplyToCommand(client, "[OSdb] Requesting bulk verification...");
+    RequestBulkVerification();
 
     return Plugin_Handled;
 }
@@ -311,6 +333,26 @@ public Action Command_ViewStyleMap(int client, int args)
     }
 
     delete snapshot;
+    return Plugin_Handled;
+}
+
+public Action Command_BatchStatus(int client, int args)
+{
+    if (!gB_IsProcessingBatches)
+    {
+        ReplyToCommand(client, "[OSdb] No batch processing currently active.");
+        return Plugin_Handled;
+    }
+    
+    int totalBatches = (gI_TotalRecords + gI_BatchSize - 1) / gI_BatchSize;
+    int completedBatches = gI_CurrentBatch;
+    int remainingBatches = totalBatches - completedBatches;
+    
+    ReplyToCommand(client, "[OSdb] Batch Processing Status:");
+    ReplyToCommand(client, "  Progress: %d/%d batches completed", completedBatches, totalBatches);
+    ReplyToCommand(client, "  Records: %d/%d processed", completedBatches * gI_BatchSize, gI_TotalRecords);
+    ReplyToCommand(client, "  Remaining: %d batches", remainingBatches);
+    
     return Plugin_Handled;
 }
 
@@ -438,6 +480,95 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     delete hJSON;
 }
 
+void ProcessNextBatch()
+{
+    if (gA_AllRecords == null || gA_AllRecords.Length == 0)
+    {
+        PrintToServer("[osdb] No more records to process, finishing batch operation.");
+        FinishBatchProcessing();
+        return;
+    }
+    
+    int startIndex = gI_CurrentBatch * gI_BatchSize;
+    int endIndex = startIndex + gI_BatchSize;
+    
+    if (startIndex >= gI_TotalRecords)
+    {
+        PrintToServer("[osdb] All batches processed, finishing operation.");
+        FinishBatchProcessing();
+        return;
+    }
+    
+    if (endIndex > gI_TotalRecords)
+    {
+        endIndex = gI_TotalRecords;
+    }
+    
+    PrintToServer("[osdb] Processing batch %d (%d-%d of %d records)...", 
+                    gI_CurrentBatch + 1, startIndex + 1, endIndex, gI_TotalRecords);
+    
+    JSONArray hArray = new JSONArray();
+    
+    for (int i = startIndex; i < endIndex; i++)
+    {
+        JSONObject hJSON = view_as<JSONObject>(gA_AllRecords.Get(i));
+        hArray.Push(hJSON);
+    }
+    
+    HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_records");
+    AddHeaders(hHTTPRequest);
+    
+    JSONObject hRecordsList = new JSONObject();
+    hRecordsList.Set("records", hArray);
+    
+    DataPack pack = new DataPack();
+    pack.WriteCell(gI_CurrentBatch);
+    pack.WriteCell(hArray.Length);
+    
+    hHTTPRequest.Post(hRecordsList, Callback_OnBatchSent, pack);
+    
+    delete hRecordsList;
+}
+
+public void Callback_OnBatchSent(HTTPResponse resp, any value)
+{
+    DataPack pack = view_as<DataPack>(value);
+    pack.Reset();
+    int batchNumber = pack.ReadCell();
+    int batchSize = pack.ReadCell();
+    delete pack;
+    
+    if (resp.Status != HTTPStatus_OK)
+    {
+        LogError("[osdb] Batch %d failed to send: status = %d", batchNumber + 1, resp.Status);
+        PrintToServer("[osdb] Batch %d failed, stopping batch processing.", batchNumber + 1);
+        FinishBatchProcessing();
+        return;
+    }
+    
+    PrintToServer("[osdb] Batch %d (%d records) sent successfully.", batchNumber + 1, batchSize);
+    
+    gI_CurrentBatch++;
+    ProcessNextBatch();
+}
+
+void FinishBatchProcessing()
+{
+    gB_IsProcessingBatches = false;
+    gI_CurrentBatch = 0;
+    gI_TotalRecords = 0;
+    
+    if (gA_AllRecords != null)
+    {
+        delete gA_AllRecords;
+        gA_AllRecords = null;
+    }
+    
+    gS_BulkCode[0] = '\0';
+    
+    PrintToServer("[osdb] Batch processing completed.");
+}
+
 void OnHttpDummyCallback(HTTPResponse resp, any value)
 {
     if (resp.Status != HTTPStatus_OK)
@@ -446,6 +577,38 @@ void OnHttpDummyCallback(HTTPResponse resp, any value)
     }
 
     return;
+}
+
+void RequestBulkVerification()
+{
+    HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_verification");
+    AddHeaders(hHTTPRequest);
+    
+    hHTTPRequest.Get(Callback_OnBulkVerification);
+}
+
+public void Callback_OnBulkVerification(HTTPResponse resp, any value)
+{
+    if (resp.Status != HTTPStatus_OK || resp.Data == null)
+    {
+        LogError("[OSdb] Bulk verification failed: status = %d, data = null", resp.Status);
+        return;
+    }
+
+    JSONObject data = view_as<JSONObject>(resp.Data);
+    
+    if (!data.HasKey("key_to_send_times"))
+    {
+        LogError("[OSdb] Bulk verification response missing 'key_to_send_times' field");
+        delete data;
+        return;
+    }
+    
+    data.GetString("key_to_send_times", gS_BulkCode, sizeof(gS_BulkCode));
+    delete data;
+    
+    PrintToServer("[OSdb] Bulk verification successful, starting record collection...");
+    SendRecordDatabase();
 }
 
 void SendRecordDatabase()
@@ -489,28 +652,32 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
         return;
     }
 
-    JSONArray hArray = new JSONArray();
+    gB_IsProcessingBatches = true;
+    gI_CurrentBatch = 0;
+    gI_TotalRecords = 0;
+    
+    if (gA_AllRecords != null)
+    {
+        delete gA_AllRecords;
+    }
+    gA_AllRecords = new ArrayList();
+
+    PrintToServer("[osdb] Collecting %d records for batch processing...", results.RowCount);
 
     while (results.FetchRow())
     {
         JSONObject hJSON = GetTimeJsonFromResult(results);
         if (hJSON.GetInt("style") != -1) {
-            hArray.Push(hJSON);
+            gA_AllRecords.Push(hJSON);
+            gI_TotalRecords++;
         }
-        delete hJSON;
+        else {
+            delete hJSON;
+        }
     }
-    PrintToServer("[osdb] Finished parsing results, sending bulk records now...");
-    HTTPRequest hHTTPRequest;
-    JSONObject  hRecordsList = new JSONObject();
-
-    hHTTPRequest             = new HTTPRequest(API_BASE_URL... "/bulk_records");
-    AddHeaders(hHTTPRequest);
-    hRecordsList.Set("records", hArray);
-
-    hHTTPRequest.Post(hRecordsList, OnHttpDummyCallback);
-
-    delete hArray;
-    delete hRecordsList;
+    
+    PrintToServer("[osdb] Collected %d records, starting batch processing...", gI_TotalRecords);
+    ProcessNextBatch();
 }
 
 JSONObject GetTimeJsonFromResult(DBResultSet results)
@@ -611,6 +778,11 @@ void AddHeaders(HTTPRequest req)
     req.SetHeader("hostname", sHostname);
     req.SetHeader("auth", gS_AuthKey);
     req.SetHeader("timer_plugin", gS_TimerVersion[gI_TimerVersion]);
+    
+    if (gB_IsProcessingBatches && strlen(gS_BulkCode) > 0)
+    {
+        req.SetHeader("bulk_verify", gS_BulkCode);
+    }
 }
 
 // from smlib
