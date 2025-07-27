@@ -280,13 +280,7 @@ public void OnMapStart()
 }
 
 public void OnMapEnd()
-{
-    if (gM_StyleMapping != null)
-    {
-        delete gM_StyleMapping;
-        gM_StyleMapping = null;
-    }
-    
+{   
     GetStyleMapping();
 }
 
