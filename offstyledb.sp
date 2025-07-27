@@ -77,6 +77,7 @@ public void OnPluginStart()
     RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs);
     RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
+    RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
 
     // gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
@@ -187,6 +188,12 @@ void GetStyleMapping()
 
 int ConvertStyle(int style)
 {
+    if (gM_StyleMapping == null)
+    {
+        LogError("[OSdb] Style mapping is null in ConvertStyle");
+        return -1;
+    }
+    
     char s[16];
     IntToString(style, s, sizeof(s));
 
@@ -239,6 +246,13 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
     // dont think we need to do it here, but doing it anyway
     delete data;
 
+    // check if StringMap is still valid FUCKING INVALID HANDLE
+    if (gM_StyleMapping == null)
+    {
+        LogError("[OSdb] Style mapping handle is null, recreating...");
+        gM_StyleMapping = new StringMap();
+    }
+
     if (gM_StyleMapping.Size > 0)
     {
         gM_StyleMapping.Clear();
@@ -267,6 +281,12 @@ public void OnMapStart()
 
 public void OnMapEnd()
 {
+    if (gM_StyleMapping != null)
+    {
+        delete gM_StyleMapping;
+        gM_StyleMapping = null;
+    }
+    
     GetStyleMapping();
 }
 
@@ -276,6 +296,12 @@ public void OnPluginEnd()
     {
         delete gA_AllRecords;
         gA_AllRecords = null;
+    }
+    
+    if (gM_StyleMapping != null)
+    {
+        delete gM_StyleMapping;
+        gM_StyleMapping = null;
     }
 }
 
@@ -353,6 +379,39 @@ public Action Command_BatchStatus(int client, int args)
     ReplyToCommand(client, "  Records: %d/%d processed", completedBatches * gI_BatchSize, gI_TotalRecords);
     ReplyToCommand(client, "  Remaining: %d batches", remainingBatches);
     
+    return Plugin_Handled;
+}
+
+public Action Command_RefreshMapping(int client, int args)
+{
+    int  iSteamID = GetSteamAccountID(client);
+    bool bAllowed = false;
+
+    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
+    {
+        if (iSteamID == gI_SteamIDWhitelist[i])
+        {
+            bAllowed = true;
+            break;
+        }
+    }
+
+    if (!bAllowed)
+    {
+        ReplyToCommand(client, "[OSdb] You are not permitted to refresh the style mapping.");
+        return Plugin_Handled;
+    }
+
+    ReplyToCommand(client, "[OSdb] Refreshing style mapping...");
+    
+    // recreate the StringMap if it's null
+    if (gM_StyleMapping == null)
+    {
+        gM_StyleMapping = new StringMap();
+        PrintToServer("[OSdb] Recreated null StringMap handle");
+    }
+    
+    GetStyleMapping();
     return Plugin_Handled;
 }
 
