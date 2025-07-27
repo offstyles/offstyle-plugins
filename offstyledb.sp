@@ -642,8 +642,13 @@ void RequestBulkVerification()
 {
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_verification");
     AddHeaders(hHTTPRequest);
+
+    JSONObject hVerificationBody = new JSONObject();
     
-    hHTTPRequest.Post(null, Callback_OnBulkVerification);
+    hHTTPRequest.Post(hVerificationBody, Callback_OnBulkVerification);
+
+    delete hVerificationBody;
+    hVerificationBody = null;
 }
 
 public void Callback_OnBulkVerification(HTTPResponse resp, any value)
