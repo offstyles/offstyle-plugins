@@ -56,6 +56,20 @@ int       gI_CurrentBatch = 0;
 int       gI_TotalRecords = 0;
 ArrayList  gA_AllRecords = null;
 int       gI_BatchSize = 5000;
+ConVar    gCV_ExtendedDebugging = null;
+
+// Helper function for debug logging
+void DebugPrint(const char[] format, any ...)
+{
+    if (gCV_ExtendedDebugging == null || !gCV_ExtendedDebugging.BoolValue)
+    {
+        return;
+    }
+    
+    char buffer[512];
+    VFormat(buffer, sizeof(buffer), format, 2);
+    PrintToServer("[OSdb Debug] %s", buffer);
+}
 
 public Plugin myinfo =
 {
@@ -79,7 +93,7 @@ public void OnPluginStart()
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
     RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
 
-    // gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+    gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
     gCV_Authentication = CreateConVar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.");
 
@@ -88,6 +102,8 @@ public void OnPluginStart()
     sv_cheats       = FindConVar("sv_cheats");
 
     gM_StyleMapping = new StringMap();
+
+    DebugPrint("OSdb plugin started, commands registered, ConVars created");
 
     // SourceJump_DebugLog("OSdb database plugin loaded.");
 }
@@ -133,14 +149,19 @@ public void OnConfigsExecuted()
 
 void GetStyleMapping()
 {
+    DebugPrint("Starting style mapping request");
+    
     char temp[160];
     temp = gS_StyleHash;
     HashStyleConfig();
 
     if (strcmp(temp, gS_StyleHash) == 0)
     {
+        DebugPrint("Style hash unchanged, skipping mapping request");
         return;
     }
+
+    DebugPrint("Style hash changed, requesting new mapping from server");
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSONObject = new JSONObject();
@@ -191,18 +212,23 @@ int ConvertStyle(int style)
     if (gM_StyleMapping == null)
     {
         LogError("[OSdb] Style mapping is null in ConvertStyle");
+        DebugPrint("ConvertStyle called but style mapping is null");
         return -1;
     }
     
     char s[16];
     IntToString(style, s, sizeof(s));
 
+    DebugPrint("Converting style %d (key: %s)", style, s);
+
     int out;
     if (gM_StyleMapping.GetValue(s, out))
     {
+        DebugPrint("Style %d converted to %d", style, out);
         return out;
     }
 
+    DebugPrint("Style %d not found in mapping, returning -1", style);
     return -1;
 }
 
@@ -233,12 +259,17 @@ void HashStyleConfig()
 
 public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 {
+    DebugPrint("Style mapping callback received - Status: %d", resp.Status);
+    
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
         LogError("[OSdb] Style Mapping failed: status = %d, data = null", resp.Status);
+        DebugPrint("Style mapping failed with status %d", resp.Status);
         SetFailState("Style Mapping returned non-ok response");
         return;
     }
+
+    DebugPrint("Style mapping response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     char       s_Data[512];
@@ -246,15 +277,19 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
     // dont think we need to do it here, but doing it anyway
     delete data;
 
+    DebugPrint("Style mapping data extracted: %s", s_Data);
+
     // check if StringMap is still valid FUCKING INVALID HANDLE
     if (gM_StyleMapping == null)
     {
         LogError("[OSdb] Style mapping handle is null, recreating...");
+        DebugPrint("Style mapping handle was null, recreating");
         gM_StyleMapping = new StringMap();
     }
 
     if (gM_StyleMapping.Size > 0)
     {
+        DebugPrint("Clearing existing style mapping (%d entries)", gM_StyleMapping.Size);
         gM_StyleMapping.Clear();
     }
 
@@ -262,6 +297,8 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
     char      parts[MAX_STYLES][8];
 
     int       count = ExplodeString(s_Data, ",", parts, sizeof(parts), sizeof(parts[]));
+    
+    DebugPrint("Processing style mapping with %d parts", count);
 
     for (int i = 0; i < count - 1; i += 2)
     {
@@ -271,29 +308,42 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
         int ivalue = StringToInt(parts[i + 1]);
 
         gM_StyleMapping.SetValue(key, ivalue);
+        DebugPrint("Mapped style %s -> %d", key, ivalue);
     }
+    
+    DebugPrint("Style mapping completed with %d styles", gM_StyleMapping.Size);
 }
 
 public void OnMapStart()
 {
+    char sMapName[256];
+    GetCurrentMap(sMapName, sizeof(sMapName));
+    DebugPrint("Map started: %s", sMapName);
+    
     gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
+    DebugPrint("Tickrate calculated: %d", gI_Tickrate);
 }
 
 public void OnMapEnd()
 {   
+    DebugPrint("Map ending, requesting style mapping");
     GetStyleMapping();
 }
 
 public void OnPluginEnd()
 {
+    DebugPrint("Plugin shutting down, cleaning up resources");
+    
     if (gA_AllRecords != null)
     {
+        DebugPrint("Cleaning up AllRecords ArrayList");
         delete gA_AllRecords;
         gA_AllRecords = null;
     }
     
     if (gM_StyleMapping != null)
     {
+        DebugPrint("Cleaning up StyleMapping StringMap");
         delete gM_StyleMapping;
         gM_StyleMapping = null;
     }
@@ -301,14 +351,19 @@ public void OnPluginEnd()
 
 public Action Command_SendAllWRs(int client, int args)
 {
+    DebugPrint("Command_SendAllWRs called by client %d", client);
+    
     int  iSteamID = GetSteamAccountID(client);
     bool bAllowed = false;
+
+    DebugPrint("Checking authorization for SteamID %d", iSteamID);
 
     for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
     {
         if (iSteamID == gI_SteamIDWhitelist[i])
         {
             bAllowed = true;
+            DebugPrint("SteamID %d found in whitelist at index %d", iSteamID, i);
             break;
         }
     }
@@ -316,16 +371,19 @@ public Action Command_SendAllWRs(int client, int args)
     if (!bAllowed)
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to fetch the records list.");
+        DebugPrint("SteamID %d not authorized for bulk operations", iSteamID);
         return Plugin_Handled;
     }
 
     if (gB_IsProcessingBatches)
     {
         ReplyToCommand(client, "[OSdb] Already processing batches. Please wait for current operation to complete.");
+        DebugPrint("Bulk operation request denied - already processing batches");
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Requesting bulk verification...");
+    DebugPrint("Starting bulk verification request");
     RequestBulkVerification();
 
     return Plugin_Handled;
@@ -378,14 +436,19 @@ public Action Command_BatchStatus(int client, int args)
 
 public Action Command_RefreshMapping(int client, int args)
 {
+    DebugPrint("Command_RefreshMapping called by client %d", client);
+    
     int  iSteamID = GetSteamAccountID(client);
     bool bAllowed = false;
+
+    DebugPrint("Checking authorization for SteamID %d", iSteamID);
 
     for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
     {
         if (iSteamID == gI_SteamIDWhitelist[i])
         {
             bAllowed = true;
+            DebugPrint("SteamID %d found in whitelist at index %d", iSteamID, i);
             break;
         }
     }
@@ -393,16 +456,19 @@ public Action Command_RefreshMapping(int client, int args)
     if (!bAllowed)
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to refresh the style mapping.");
+        DebugPrint("SteamID %d not authorized for style mapping refresh", iSteamID);
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Refreshing style mapping...");
+    DebugPrint("Starting style mapping refresh");
     
     // recreate the StringMap if it's null
     if (gM_StyleMapping == null)
     {
         gM_StyleMapping = new StringMap();
         PrintToServer("[OSdb] Recreated null StringMap handle");
+        DebugPrint("Recreated null StringMap handle");
     }
     
     GetStyleMapping();
@@ -473,19 +539,25 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
 
 void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR)
 {
+    DebugPrint("SendRecord called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s", 
+               sMap, sSteamID, sName, time, style, isWR ? "true" : "false");
+    
     if (sv_cheats.BoolValue)
     {
         LogError("[OSdb] Attempted to submit record with sv_cheats enabled. Record data: %s | %s | %s | %s | %f | %f | %d | %d",
                  sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
-
+        DebugPrint("Record submission blocked due to sv_cheats being enabled");
         return;
     }
 
     int n_Style = ConvertStyle(style);
     if (n_Style == -1)
     {
+        DebugPrint("Style conversion failed for style %d, aborting record submission", style);
         return;
     }
+
+    DebugPrint("Style %d converted to %d, preparing HTTP request", style, n_Style);
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSON = new JSONObject();
@@ -634,11 +706,14 @@ void OnHttpDummyCallback(HTTPResponse resp, any value)
 
 void RequestBulkVerification()
 {
+    DebugPrint("Starting bulk verification request");
+    
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_verification");
     AddHeaders(hHTTPRequest);
 
     JSONObject hVerificationBody = new JSONObject();
     
+    DebugPrint("Sending bulk verification request to server");
     hHTTPRequest.Post(hVerificationBody, Callback_OnBulkVerification);
 
     delete hVerificationBody;
@@ -647,17 +722,23 @@ void RequestBulkVerification()
 
 public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 {
+    DebugPrint("Bulk verification callback received - Status: %d", resp.Status);
+    
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
         LogError("[OSdb] Bulk verification failed: status = %d, data = null", resp.Status);
+        DebugPrint("Bulk verification failed with status %d", resp.Status);
         return;
     }
+
+    DebugPrint("Bulk verification response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     
     if (!data.HasKey("key_to_send_times"))
     {
         LogError("[OSdb] Bulk verification response missing 'key_to_send_times' field");
+        DebugPrint("Bulk verification response missing required field");
         delete data;
         return;
     }
@@ -665,12 +746,16 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
     data.GetString("key_to_send_times", gS_BulkCode, sizeof(gS_BulkCode));
     delete data;
     
+    DebugPrint("Bulk code received: %s", gS_BulkCode);
+    
     PrintToServer("[OSdb] Bulk verification successful, starting record collection...");
     SendRecordDatabase();
 }
 
 void SendRecordDatabase()
 {
+    DebugPrint("Starting record database query");
+    
     char sQuery[1024];
     switch (gI_TimerVersion)
     {
