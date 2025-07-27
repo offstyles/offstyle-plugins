@@ -643,7 +643,7 @@ void RequestBulkVerification()
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_verification");
     AddHeaders(hHTTPRequest);
     
-    hHTTPRequest.Get(Callback_OnBulkVerification);
+    hHTTPRequest.Post(null, Callback_OnBulkVerification);
 }
 
 public void Callback_OnBulkVerification(HTTPResponse resp, any value)
