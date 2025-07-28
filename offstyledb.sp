@@ -398,23 +398,29 @@ public Action Command_SendAllWRs(int client, int args)
 
 public Action Command_ViewStyleMap(int client, int args)
 {
+    DebugPrint("Command_ViewStyleMap called by client %d", client);
+    
     if (gM_StyleMapping == null || gM_StyleMapping.Size == 0)
     {
         PrintToChat(client, "[OSdb] Style map is empty or null");
+        DebugPrint("Style mapping is null or empty");
         return Plugin_Handled;
     }
 
     StringMapSnapshot snapshot = gM_StyleMapping.Snapshot();
-
     int               count    = snapshot.Length;
 
-    char              key[256], value[256];
+    DebugPrint("Displaying style mapping with %d entries", count);
+    PrintToChat(client, "[OSdb] Style Mapping (%d entries):", count);
+
+    char key[16];
+    int  value;
     for (int i = 0; i < count; i++)
     {
         snapshot.GetKey(i, key, sizeof(key));
-        gM_StyleMapping.GetString(key, value, sizeof(value));
+        gM_StyleMapping.GetValue(key, value);
 
-        PrintToChat(client, "[StyleMap] %s: %s", key, value);
+        PrintToChat(client, "[StyleMap] %s: %d", key, value);
     }
 
     delete snapshot;
