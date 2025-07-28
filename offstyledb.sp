@@ -147,21 +147,28 @@ public void OnConfigsExecuted()
     GetStyleMapping();
 }
 
-void GetStyleMapping()
+void GetStyleMapping(bool forceRefresh = false)
 {
-    DebugPrint("Starting style mapping request");
+    DebugPrint("Starting style mapping request (forceRefresh: %s)", forceRefresh ? "true" : "false");
     
-    char temp[160];
-    temp = gS_StyleHash;
-    HashStyleConfig();
-
-    if (strcmp(temp, gS_StyleHash) == 0)
+    if (!forceRefresh)
     {
-        DebugPrint("Style hash unchanged, skipping mapping request");
-        return;
+        char temp[160];
+        temp = gS_StyleHash;
+        HashStyleConfig();
+
+        if (strcmp(temp, gS_StyleHash) == 0)
+        {
+            DebugPrint("Style hash unchanged, skipping mapping request");
+            return;
+        }
+    }
+    else
+    {
+        DebugPrint("Force refresh requested, bypassing hash check");
     }
 
-    DebugPrint("Style hash changed, requesting new mapping from server");
+    DebugPrint("Style hash changed or forced refresh, requesting new mapping from server");
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSONObject = new JSONObject();
@@ -471,7 +478,7 @@ public Action Command_RefreshMapping(int client, int args)
         DebugPrint("Recreated null StringMap handle");
     }
     
-    GetStyleMapping();
+    GetStyleMapping(true);  // Force refresh
     return Plugin_Handled;
 }
 
