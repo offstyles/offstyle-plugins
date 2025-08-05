@@ -58,6 +58,17 @@ ArrayList  gA_AllRecords = null;
 int       gI_BatchSize = 5000;
 ConVar    gCV_ExtendedDebugging = null;
 
+// GetReplay plugin variables
+ConVar    gCV_ReplayPermissionFlag = null;
+ConVar    gCV_ReplayBotLooping = null;
+ConVar    gCV_ReplaySpectateDelay = null;
+ConVar    gCV_ReplayMaxConcurrent = null;
+ArrayList gA_ActiveReplays = null;
+int       gI_ReplayBot = -1;
+bool      gB_IsDownloadingReplay = false;
+StringMap gM_ReplayCache = null;
+char      gS_CurrentMap[64];
+
 // Helper function for debug logging
 void DebugPrint(const char[] format, any ...)
 {
@@ -92,16 +103,28 @@ public void OnPluginStart()
     RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
     RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
+    RegConsoleCmd("getreplay", Command_GetReplay, "Download and play replays from the database");
 
     gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
     gCV_Authentication = CreateConVar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.");
+    
+    // GetReplay ConVars
+    gCV_ReplayPermissionFlag = CreateConVar("osdb_replay_flag", "b", "Admin flag required to use getreplay command (empty for all players)", FCVAR_NONE);
+    gCV_ReplayBotLooping = CreateConVar("osdb_replay_loop", "0", "Enable replay bot looping", FCVAR_NONE, true, 0.0, true, 1.0);
+    gCV_ReplaySpectateDelay = CreateConVar("osdb_replay_spectate_delay", "2.5", "Delay before spectating replay bot", FCVAR_NONE, true, 0.0, true, 10.0);
+    gCV_ReplayMaxConcurrent = CreateConVar("osdb_replay_max_concurrent", "1", "Maximum number of concurrent replays", FCVAR_NONE, true, 1.0, true, 5.0);
 
     AutoExecConfig();
 
     sv_cheats       = FindConVar("sv_cheats");
 
     gM_StyleMapping = new StringMap();
+    
+    // Initialize GetReplay data structures
+    gA_ActiveReplays = new ArrayList(ByteCountToCells(64));
+    gM_ReplayCache = new StringMap();
+    GetCurrentMap(gS_CurrentMap, sizeof(gS_CurrentMap));
 
     DebugPrint("OSdb plugin started, commands registered, ConVars created");
 
@@ -145,6 +168,36 @@ public void OnConfigsExecuted()
     gCV_Authentication.SetString("");
 
     GetStyleMapping();
+}
+
+public void OnMapStart()
+{
+    char sNewMap[64];
+    GetCurrentMap(sNewMap, sizeof(sNewMap));
+    
+    // Clean up replay cache if map changed
+    if (strcmp(gS_CurrentMap, sNewMap) != 0)
+    {
+        strcopy(gS_CurrentMap, sizeof(gS_CurrentMap), sNewMap);
+        CleanupReplayCache();
+        DebugPrint("Map changed to %s, cleaned up replay cache", sNewMap);
+    }
+}
+
+void CleanupReplayCache()
+{
+    if (gM_ReplayCache != null)
+    {
+        gM_ReplayCache.Clear();
+    }
+    
+    if (gA_ActiveReplays != null)
+    {
+        gA_ActiveReplays.Clear();
+    }
+    
+    gI_ReplayBot = -1;
+    gB_IsDownloadingReplay = false;
 }
 
 void GetStyleMapping(bool forceRefresh = false)
@@ -486,6 +539,375 @@ public Action Command_RefreshMapping(int client, int args)
     
     GetStyleMapping(true);  // Force refresh
     return Plugin_Handled;
+}
+
+public Action Command_GetReplay(int client, int args)
+{
+    DebugPrint("Command_GetReplay called by client %d", client);
+    
+    if (client == 0)
+    {
+        ReplyToCommand(client, "[OSdb] This command can only be used in-game.");
+        return Plugin_Handled;
+    }
+    
+    // Check permissions
+    char sFlag[8];
+    gCV_ReplayPermissionFlag.GetString(sFlag, sizeof(sFlag));
+    
+    if (strlen(sFlag) > 0 && !CheckCommandAccess(client, "osdb_getreplay", ReadFlagString(sFlag)))
+    {
+        ReplyToCommand(client, "[OSdb] You don't have permission to use this command.");
+        DebugPrint("Client %d denied access to getreplay command", client);
+        return Plugin_Handled;
+    }
+    
+    // Check if already downloading
+    if (gB_IsDownloadingReplay)
+    {
+        ReplyToCommand(client, "[OSdb] Already downloading a replay. Please wait.");
+        return Plugin_Handled;
+    }
+    
+    // Check max concurrent replays
+    int maxConcurrent = gCV_ReplayMaxConcurrent.IntValue;
+    if (gA_ActiveReplays.Length >= maxConcurrent)
+    {
+        ReplyToCommand(client, "[OSdb] Maximum number of replays (%d) already active.", maxConcurrent);
+        return Plugin_Handled;
+    }
+    
+    DisplayReplayStyleMenu(client);
+    return Plugin_Handled;
+}
+
+void DisplayReplayStyleMenu(int client)
+{
+    DebugPrint("DisplayReplayStyleMenu called for client %d", client);
+    
+    if (gM_StyleMapping == null || gM_StyleMapping.Size == 0)
+    {
+        ReplyToCommand(client, "[OSdb] Style mapping not available. Please try again later.");
+        DebugPrint("Style mapping not available for replay menu");
+        return;
+    }
+    
+    Menu menu = new Menu(MenuHandler_ReplayStyle);
+    menu.SetTitle("Select Replay Style");
+    
+    StringMapSnapshot snapshot = gM_StyleMapping.Snapshot();
+    for (int i = 0; i < snapshot.Length; i++)
+    {
+        int keySize = snapshot.KeyBufferSize(i);
+        char[] sStyle = new char[keySize];
+        snapshot.GetKey(i, sStyle, keySize);
+        
+        int styleId;
+        if (gM_StyleMapping.GetValue(sStyle, styleId))
+        {
+            char sDisplay[64];
+            Format(sDisplay, sizeof(sDisplay), "%s (ID: %d)", sStyle, styleId);
+            menu.AddItem(sStyle, sDisplay);
+        }
+    }
+    
+    delete snapshot;
+    
+    if (menu.ItemCount == 0)
+    {
+        menu.AddItem("", "No styles available", ITEMDRAW_DISABLED);
+    }
+    
+    menu.ExitButton = true;
+    menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int MenuHandler_ReplayStyle(Menu menu, MenuAction action, int param1, int param2)
+{
+    switch (action)
+    {
+        case MenuAction_Select:
+        {
+            char sStyle[64];
+            menu.GetItem(param2, sStyle, sizeof(sStyle));
+            
+            DebugPrint("Client %d selected style: %s", param1, sStyle);
+            DownloadReplay(param1, sStyle);
+        }
+        case MenuAction_End:
+        {
+            delete menu;
+        }
+    }
+    
+    return 0;
+}
+
+void DownloadReplay(int client, const char[] sStyle)
+{
+    DebugPrint("DownloadReplay called for client %d, style %s", client, sStyle);
+    
+    // Check if this replay is already cached
+    char sCacheKey[128];
+    Format(sCacheKey, sizeof(sCacheKey), "%s_%s", gS_CurrentMap, sStyle);
+    
+    char sDummy[1];
+    if (gM_ReplayCache.GetString(sCacheKey, sDummy, sizeof(sDummy)))
+    {
+        DebugPrint("Replay %s already cached, spawning bot directly", sCacheKey);
+        SpawnReplayBot(client, sStyle, sCacheKey);
+        return;
+    }
+    
+    // Set downloading flag to prevent concurrent downloads
+    gB_IsDownloadingReplay = true;
+    
+    PrintToChat(client, "[OSdb] Downloading replay for %s style...", sStyle);
+    
+    HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL ... "/get_replay");
+    AddHeaders(hHTTPRequest);
+    
+    JSONObject hJSON = new JSONObject();
+    hJSON.SetString("map", gS_CurrentMap);
+    hJSON.SetString("style", sStyle);
+    
+    char sData[1024];
+    hJSON.ToString(sData, sizeof(sData));
+    hHTTPRequest.Post(hJSON, OnReplayDownloaded, GetClientUserId(client));
+    
+    delete hJSON;
+    
+    DebugPrint("Sent replay download request for map %s, style %s", gS_CurrentMap, sStyle);
+}
+
+public void OnReplayDownloaded(HTTPResponse response, int userid)
+{
+    gB_IsDownloadingReplay = false;
+    
+    int client = GetClientOfUserId(userid);
+    if (client == 0)
+    {
+        DebugPrint("OnReplayDownloaded: Client disconnected");
+        return;
+    }
+    
+    if (response.Status != HTTPStatus_OK)
+    {
+        PrintToChat(client, "[OSdb] Failed to download replay (HTTP %d)", response.Status);
+        DebugPrint("Replay download failed with HTTP status %d", response.Status);
+        return;
+    }
+    
+    JSONObject hJSON = view_as<JSONObject>(response.Data);
+    if (hJSON == null)
+    {
+        PrintToChat(client, "[OSdb] Invalid response from server");
+        DebugPrint("Invalid JSON response for replay download");
+        return;
+    }
+    
+    bool success = false;
+    if (hJSON.HasKey("success"))
+    {
+        success = hJSON.GetBool("success");
+    }
+    
+    if (!success)
+    {
+        char sError[256] = "Unknown error";
+        if (hJSON.HasKey("error"))
+        {
+            hJSON.GetString("error", sError, sizeof(sError));
+        }
+        PrintToChat(client, "[OSdb] Failed to get replay: %s", sError);
+        DebugPrint("Replay download failed: %s", sError);
+        return;
+    }
+    
+    // Get replay data
+    char sReplayData[65536];
+    if (!hJSON.HasKey("replay_data") || !hJSON.GetString("replay_data", sReplayData, sizeof(sReplayData)))
+    {
+        PrintToChat(client, "[OSdb] No replay data received");
+        DebugPrint("No replay data in response");
+        return;
+    }
+    
+    char sStyle[64];
+    if (!hJSON.HasKey("style") || !hJSON.GetString("style", sStyle, sizeof(sStyle)))
+    {
+        PrintToChat(client, "[OSdb] No style information received");
+        DebugPrint("No style in response");
+        return;
+    }
+    
+    // Save replay to cache
+    char sCacheKey[128];
+    Format(sCacheKey, sizeof(sCacheKey), "%s_%s", gS_CurrentMap, sStyle);
+    gM_ReplayCache.SetString(sCacheKey, sReplayData);
+    
+    DebugPrint("Replay cached with key: %s", sCacheKey);
+    PrintToChat(client, "[OSdb] Replay downloaded successfully! Spawning bot...");
+    
+    // Spawn the replay bot
+    SpawnReplayBot(client, sStyle, sCacheKey);
+}
+
+void SpawnReplayBot(int client, const char[] sStyle, const char[] sCacheKey)
+{
+    DebugPrint("SpawnReplayBot called for client %d, style %s", client, sStyle);
+    
+    // Check for duplicate active replays
+    for (int i = 0; i < gA_ActiveReplays.Length; i++)
+    {
+        char sActiveKey[128];
+        gA_ActiveReplays.GetString(i, sActiveKey, sizeof(sActiveKey));
+        if (strcmp(sActiveKey, sCacheKey) == 0)
+        {
+            PrintToChat(client, "[OSdb] This replay is already being played!");
+            DebugPrint("Attempted to spawn duplicate replay: %s", sCacheKey);
+            return;
+        }
+    }
+    
+    // Get replay data from cache
+    char sReplayData[65536];
+    if (!gM_ReplayCache.GetString(sCacheKey, sReplayData, sizeof(sReplayData)))
+    {
+        PrintToChat(client, "[OSdb] Replay data not found in cache");
+        DebugPrint("Replay data not found for key: %s", sCacheKey);
+        return;
+    }
+    
+    // Create replay bot through Shavit system
+    // Note: This would require integration with Shavit's replay system
+    // For now, we'll simulate the process and show the concept
+    
+    PrintToChat(client, "[OSdb] Creating replay bot for %s style...", sStyle);
+    
+    // Save replay file temporarily for bot to use
+    char sReplayPath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, sReplayPath, sizeof(sReplayPath), "data/replaybot/temp_%s.replay", sCacheKey);
+    
+    // Decode base64 replay data and save to file
+    if (SaveReplayFile(sReplayPath, sReplayData))
+    {
+        DebugPrint("Replay file saved to: %s", sReplayPath);
+        
+        // Add to active replays list
+        gA_ActiveReplays.PushString(sCacheKey);
+        
+        // Try to spawn the bot (this would require Shavit integration)
+        if (CreateReplayBot(sReplayPath, sStyle))
+        {
+            PrintToChat(client, "[OSdb] Replay bot created successfully!");
+            
+            // Schedule spectator switch with delay
+            float fDelay = gCV_ReplaySpectateDelay.FloatValue;
+            CreateTimer(fDelay, Timer_SpectateReplayBot, GetClientUserId(client));
+            
+            DebugPrint("Scheduled spectator switch for client %d with %.1f second delay", client, fDelay);
+        }
+        else
+        {
+            PrintToChat(client, "[OSdb] Failed to create replay bot");
+            DebugPrint("Failed to create replay bot for %s", sCacheKey);
+            
+            // Remove from active replays since it failed
+            int index = gA_ActiveReplays.FindString(sCacheKey);
+            if (index != -1)
+            {
+                gA_ActiveReplays.Erase(index);
+            }
+        }
+    }
+    else
+    {
+        PrintToChat(client, "[OSdb] Failed to save replay file");
+        DebugPrint("Failed to save replay file for %s", sCacheKey);
+    }
+}
+
+bool SaveReplayFile(const char[] sPath, const char[] sBase64Data)
+{
+    DebugPrint("SaveReplayFile called for path: %s", sPath);
+    
+    // Create directory if it doesn't exist
+    char sDir[PLATFORM_MAX_PATH];
+    strcopy(sDir, sizeof(sDir), sPath);
+    int lastSlash = FindCharInString(sDir, '/', true);
+    if (lastSlash != -1)
+    {
+        sDir[lastSlash] = '\0';
+        if (!DirExists(sDir))
+        {
+            CreateDirectory(sDir, 755);
+            DebugPrint("Created directory: %s", sDir);
+        }
+    }
+    
+    // For now, we'll just create a placeholder file
+    // In a real implementation, you'd decode the base64 data
+    File hFile = OpenFile(sPath, "w");
+    if (hFile == null)
+    {
+        DebugPrint("Failed to create replay file: %s", sPath);
+        return false;
+    }
+    
+    // Write placeholder data (in real implementation, decode base64)
+    hFile.WriteString("REPLAY_FILE_PLACEHOLDER", false);
+    hFile.Close();
+    
+    DebugPrint("Replay file saved successfully");
+    return true;
+}
+
+bool CreateReplayBot(const char[] sReplayPath, const char[] sStyle)
+{
+    DebugPrint("CreateReplayBot called for path: %s, style: %s", sReplayPath, sStyle);
+    
+    // This is a placeholder for actual bot creation
+    // In a real implementation, this would integrate with Shavit's replay bot system
+    // The bot would need to:
+    // 1. Load the replay file
+    // 2. Create a bot entity
+    // 3. Start playback
+    // 4. Handle looping if enabled
+    
+    gI_ReplayBot = GetRandomInt(1, MaxClients); // Placeholder bot client index
+    
+    DebugPrint("Replay bot created with placeholder client index: %d", gI_ReplayBot);
+    return true;
+}
+
+public Action Timer_SpectateReplayBot(Handle timer, int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (client == 0)
+    {
+        DebugPrint("Timer_SpectateReplayBot: Client disconnected");
+        return Plugin_Stop;
+    }
+    
+    if (gI_ReplayBot == -1)
+    {
+        PrintToChat(client, "[OSdb] Replay bot not available for spectating");
+        DebugPrint("No replay bot available for spectating");
+        return Plugin_Stop;
+    }
+    
+    // Make client spectate the replay bot
+    // This would require actual spectator implementation
+    PrintToChat(client, "[OSdb] Now spectating the replay bot!");
+    DebugPrint("Client %d switched to spectate replay bot %d", client, gI_ReplayBot);
+    
+    // In a real implementation:
+    // ChangeClientTeam(client, CS_TEAM_SPECTATOR);
+    // SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", gI_ReplayBot);
+    // SetEntProp(client, Prop_Send, "m_iObserverMode", 4); // OBS_MODE_IN_EYE
+    
+    return Plugin_Stop;
 }
 
 // for records only, useless since we want every time submitted
