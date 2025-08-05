@@ -2,6 +2,7 @@
 #include <keyvalues>
 #include <ripext>
 #include <sha1>
+#include <sdktools>
 
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
@@ -12,6 +13,10 @@
 native float Shavit_GetWorldRecord(int style, int track);
 native bool  Shavit_IsPracticeMode(int client);
 native bool  Shavit_IsPaused(int client);
+native bool  Shavit_StartReplay(int style, int track, float time, int bot, const char[] path);
+native void  Shavit_StopReplay(int bot);
+native int   Shavit_GetReplayBot(int style, int track);
+
 forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
@@ -94,6 +99,9 @@ public Plugin myinfo =
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
     MarkNativeAsOptional("Shavit_GetWorldRecord");
+    MarkNativeAsOptional("Shavit_StartReplay");
+    MarkNativeAsOptional("Shavit_StopReplay");
+    MarkNativeAsOptional("Shavit_GetReplayBot");
     return APLRes_Success;
 }
 
@@ -104,6 +112,7 @@ public void OnPluginStart()
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
     RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
     RegConsoleCmd("getreplay", Command_GetReplay, "Download and play replays from the database");
+    RegAdminCmd("osdb_stop_replays", Command_StopReplays, ADMFLAG_RCON, "Stop all active replays");
 
     gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
@@ -406,6 +415,23 @@ public void OnPluginEnd()
         DebugPrint("Cleaning up StyleMapping StringMap");
         delete gM_StyleMapping;
         gM_StyleMapping = null;
+    }
+}
+
+public void OnPluginEnd()
+{
+    CleanupReplayCache();
+    
+    if (gA_ActiveReplays != null)
+    {
+        delete gA_ActiveReplays;
+        gA_ActiveReplays = null;
+    }
+    
+    if (gM_ReplayCache != null)
+    {
+        delete gM_ReplayCache;
+        gM_ReplayCache = null;
     }
 }
 
@@ -846,20 +872,73 @@ bool SaveReplayFile(const char[] sPath, const char[] sBase64Data)
         }
     }
     
-    // For now, we'll just create a placeholder file
-    // In a real implementation, you'd decode the base64 data
-    File hFile = OpenFile(sPath, "w");
+    // Decode base64 data
+    int decodedSize = (strlen(sBase64Data) * 3) / 4;
+    char[] decodedData = new char[decodedSize];
+    
+    if (!DecodeBase64(sBase64Data, decodedData, decodedSize))
+    {
+        DebugPrint("Failed to decode base64 replay data");
+        return false;
+    }
+    
+    File hFile = OpenFile(sPath, "wb");
     if (hFile == null)
     {
         DebugPrint("Failed to create replay file: %s", sPath);
         return false;
     }
     
-    // Write placeholder data (in real implementation, decode base64)
-    hFile.WriteString("REPLAY_FILE_PLACEHOLDER", false);
+    // Write decoded binary data
+    hFile.Write(decodedData, decodedSize, 1);
     hFile.Close();
     
-    DebugPrint("Replay file saved successfully");
+    DebugPrint("Replay file saved successfully with %d bytes", decodedSize);
+    return true;
+}
+
+bool DecodeBase64(const char[] sInput, char[] sOutput, int maxlen)
+{
+    // Simple base64 decoder - in production you'd want a more robust implementation
+    int inputLen = strlen(sInput);
+    if (inputLen % 4 != 0)
+    {
+        return false;
+    }
+    
+    char base64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int outputLen = 0;
+    
+    for (int i = 0; i < inputLen; i += 4)
+    {
+        if (outputLen >= maxlen - 3)
+        {
+            break;
+        }
+        
+        int val1 = FindCharInString(base64_table, sInput[i]);
+        int val2 = FindCharInString(base64_table, sInput[i + 1]);
+        int val3 = (sInput[i + 2] == '=') ? 0 : FindCharInString(base64_table, sInput[i + 2]);
+        int val4 = (sInput[i + 3] == '=') ? 0 : FindCharInString(base64_table, sInput[i + 3]);
+        
+        if (val1 == -1 || val2 == -1 || (sInput[i + 2] != '=' && val3 == -1) || (sInput[i + 3] != '=' && val4 == -1))
+        {
+            return false;
+        }
+        
+        int combined = (val1 << 18) | (val2 << 12) | (val3 << 6) | val4;
+        
+        sOutput[outputLen++] = (combined >> 16) & 0xFF;
+        if (sInput[i + 2] != '=')
+        {
+            sOutput[outputLen++] = (combined >> 8) & 0xFF;
+        }
+        if (sInput[i + 3] != '=')
+        {
+            sOutput[outputLen++] = combined & 0xFF;
+        }
+    }
+    
     return true;
 }
 
@@ -867,18 +946,78 @@ bool CreateReplayBot(const char[] sReplayPath, const char[] sStyle)
 {
     DebugPrint("CreateReplayBot called for path: %s, style: %s", sReplayPath, sStyle);
     
-    // This is a placeholder for actual bot creation
-    // In a real implementation, this would integrate with Shavit's replay bot system
-    // The bot would need to:
-    // 1. Load the replay file
-    // 2. Create a bot entity
-    // 3. Start playback
-    // 4. Handle looping if enabled
+    // Get style ID for Shavit integration
+    int styleId;
+    if (!gM_StyleMapping.GetValue(sStyle, styleId))
+    {
+        DebugPrint("Failed to get style ID for style: %s", sStyle);
+        return false;
+    }
     
-    gI_ReplayBot = GetRandomInt(1, MaxClients); // Placeholder bot client index
-    
-    DebugPrint("Replay bot created with placeholder client index: %d", gI_ReplayBot);
-    return true;
+    // Try to use Shavit's replay system if available
+    if (GetFeatureStatus(FeatureType_Native, "Shavit_StartReplay") == FeatureStatus_Available)
+    {
+        DebugPrint("Using Shavit_StartReplay for bot creation");
+        
+        // Get or create a bot for this replay
+        int bot = Shavit_GetReplayBot(styleId, 0); // Track 0 for main
+        if (bot == -1)
+        {
+            // Need to create a bot
+            bot = CreateFakeClient("Replay Bot");
+            if (bot == 0)
+            {
+                DebugPrint("Failed to create fake client for replay bot");
+                return false;
+            }
+            
+            DebugPrint("Created fake client %d for replay bot", bot);
+        }
+        
+        // Start the replay
+        if (Shavit_StartReplay(styleId, 0, 0.0, bot, sReplayPath))
+        {
+            gI_ReplayBot = bot;
+            DebugPrint("Successfully started Shavit replay with bot %d", bot);
+            return true;
+        }
+        else
+        {
+            DebugPrint("Failed to start Shavit replay");
+            if (IsValidClient(bot))
+            {
+                KickClient(bot);
+            }
+            return false;
+        }
+    }
+    else
+    {
+        DebugPrint("Shavit replay natives not available, using fallback method");
+        
+        // Fallback: create a simple bot
+        int bot = CreateFakeClient("Replay Bot");
+        if (bot == 0)
+        {
+            DebugPrint("Failed to create fake client for replay bot");
+            return false;
+        }
+        
+        gI_ReplayBot = bot;
+        DebugPrint("Created fallback replay bot with client %d", bot);
+        
+        // In a more complete implementation, you would:
+        // 1. Load and parse the replay file
+        // 2. Create a timer to play back the movements
+        // 3. Handle bot positioning and animation
+        
+        return true;
+    }
+}
+
+bool IsValidClient(int client)
+{
+    return (client > 0 && client <= MaxClients && IsClientInGame(client));
 }
 
 public Action Timer_SpectateReplayBot(Handle timer, int userid)
@@ -890,24 +1029,86 @@ public Action Timer_SpectateReplayBot(Handle timer, int userid)
         return Plugin_Stop;
     }
     
-    if (gI_ReplayBot == -1)
+    if (gI_ReplayBot == -1 || !IsValidClient(gI_ReplayBot))
     {
         PrintToChat(client, "[OSdb] Replay bot not available for spectating");
-        DebugPrint("No replay bot available for spectating");
+        DebugPrint("No valid replay bot available for spectating");
         return Plugin_Stop;
     }
     
     // Make client spectate the replay bot
-    // This would require actual spectator implementation
+    int currentTeam = GetClientTeam(client);
+    if (currentTeam != 1) // Not already spectator
+    {
+        ChangeClientTeam(client, 1); // Move to spectators
+        DebugPrint("Moved client %d to spectator team", client);
+    }
+    
+    // Set spectator target and mode
+    SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", gI_ReplayBot);
+    SetEntProp(client, Prop_Send, "m_iObserverMode", 4); // OBS_MODE_IN_EYE
+    
     PrintToChat(client, "[OSdb] Now spectating the replay bot!");
     DebugPrint("Client %d switched to spectate replay bot %d", client, gI_ReplayBot);
     
-    // In a real implementation:
-    // ChangeClientTeam(client, CS_TEAM_SPECTATOR);
-    // SetEntPropEnt(client, Prop_Send, "m_hObserverTarget", gI_ReplayBot);
-    // SetEntProp(client, Prop_Send, "m_iObserverMode", 4); // OBS_MODE_IN_EYE
-    
     return Plugin_Stop;
+}
+
+public Action Command_StopReplays(int client, int args)
+{
+    DebugPrint("Command_StopReplays called by client %d", client);
+    
+    int stoppedCount = 0;
+    
+    // Stop Shavit replays if available
+    if (GetFeatureStatus(FeatureType_Native, "Shavit_StopReplay") == FeatureStatus_Available)
+    {
+        if (gI_ReplayBot != -1 && IsValidClient(gI_ReplayBot))
+        {
+            Shavit_StopReplay(gI_ReplayBot);
+            DebugPrint("Stopped Shavit replay for bot %d", gI_ReplayBot);
+            stoppedCount++;
+        }
+    }
+    
+    // Clean up any remaining bots
+    if (gI_ReplayBot != -1 && IsValidClient(gI_ReplayBot))
+    {
+        KickClient(gI_ReplayBot, "Replay stopped by admin");
+        DebugPrint("Kicked replay bot %d", gI_ReplayBot);
+        stoppedCount++;
+    }
+    
+    // Clear all active replays
+    if (gA_ActiveReplays != null)
+    {
+        gA_ActiveReplays.Clear();
+    }
+    
+    gI_ReplayBot = -1;
+    
+    ReplyToCommand(client, "[OSdb] Stopped %d active replay(s)", stoppedCount);
+    DebugPrint("Stopped %d active replays", stoppedCount);
+    
+    return Plugin_Handled;
+}
+
+public void OnClientDisconnect(int client)
+{
+    // Clean up if this was our replay bot
+    if (client == gI_ReplayBot)
+    {
+        DebugPrint("Replay bot %d disconnected, cleaning up", client);
+        gI_ReplayBot = -1;
+        
+        // Remove from active replays list
+        if (gA_ActiveReplays != null)
+        {
+            // Note: In a more complete implementation, you'd track which
+            // replay this bot was associated with and remove only that one
+            gA_ActiveReplays.Clear();
+        }
+    }
 }
 
 // for records only, useless since we want every time submitted
