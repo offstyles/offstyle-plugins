@@ -488,33 +488,32 @@ public Action Command_RefreshMapping(int client, int args)
     return Plugin_Handled;
 }
 
-// for records only, useless since we want every time submitted
-// public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
-// {
-//     if (track != 0 || gI_TimerVersion != TimerVersion_shavit) {
-//         return;
-//     }
+// Handle WR submissions with replay files - fires after replay is saved
+public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
+{
+    if (track != 0 || gI_TimerVersion != TimerVersion_shavit || !isbestreplay || Shavit_IsPracticeMode(client) || Shavit_IsPaused(client)) {
+        return;
+    }
 
-//     // uncomment this if we want to only send records
-//     // if (time > Shavit_GetWorldRecord(style, track)) {
-//     //     return;
-//     // }
+    // Only submit if this is actually a WR (best replay)
+    if (time > Shavit_GetWorldRecord(style, track)) {
+        return;
+    }
 
-//     char sMap[64];
-//     GetCurrentMap(sMap, sizeof(sMap));
-//     GetMapDisplayName(sMap, sMap, sizeof(sMap));
+    char sMap[64];
+    GetCurrentMap(sMap, sizeof(sMap));
+    GetMapDisplayName(sMap, sMap, sizeof(sMap));
 
-//     char sSteamID[32];
-//     GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
+    char sSteamID[32];
+    GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
 
-//     char sName[MAX_NAME_LENGTH];
-//     GetClientName(client, sName, sizeof(sName));
+    char sName[MAX_NAME_LENGTH];
+    GetClientName(client, sName, sizeof(sName));
 
-//     char sDate[32];
-//     FormatTime(sDate, sizeof(sDate), "%Y-%m-%d %H:%M:%S", GetTime());
+    int sDate = GetTime();
 
-//     SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style);
-// }
+    SendRecordWithReplay(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, replaypath);
+}
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
 {
     // oldtime <= time is a filter to prevent non-pbs from being submitted
@@ -533,6 +532,8 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     }
     else {
         isWR = true;
+        // Don't submit WRs here - they'll be handled by Shavit_OnReplaySaved with the correct replay file
+        return;
     }
 
     char sMap[64];
@@ -589,13 +590,57 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     hJSON.SetInt("style", n_Style);
     hJSON.SetNull("replayfile");
 
-    char sPath[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, sPath, sizeof(sPath), "data/replaybot/%d/%s.replay", style, sMap);
+    // For non-WR submissions, we don't include replay files to avoid race conditions
+    DebugPrint("Non-WR submission, no replay file attached");
 
-    // since we arent considering bonuses, we only have to think about track 0 (main)
-    if (FileExists(sPath) && isWR)
+    hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
+    delete hJSON;
+}
+
+void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR, const char[] replayPath)
+{
+    DebugPrint("SendRecordWithReplay called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s, ReplayPath=%s", 
+               sMap, sSteamID, sName, time, style, isWR ? "true" : "false", replayPath);
+    
+    if (sv_cheats.BoolValue)
     {
-        File fFile = OpenFile(sPath, "rb");
+        LogError("[OSdb] Attempted to submit record with sv_cheats enabled. Record data: %s | %s | %s | %s | %f | %f | %d | %d",
+                 sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
+        DebugPrint("Record submission blocked due to sv_cheats being enabled");
+        return;
+    }
+
+    int n_Style = ConvertStyle(style);
+    if (n_Style == -1)
+    {
+        DebugPrint("Style conversion failed for style %d, aborting record submission", style);
+        return;
+    }
+
+    DebugPrint("Style %d converted to %d, preparing HTTP request with replay", style, n_Style);
+
+    HTTPRequest hHTTPRequest;
+    JSONObject  hJSON = new JSONObject();
+
+    hHTTPRequest      = new HTTPRequest(API_BASE_URL... "/submit_record");
+    AddHeaders(hHTTPRequest);
+    hJSON.SetString("map", sMap);
+    hJSON.SetString("steamid", sSteamID);
+    hJSON.SetString("name", sName);
+    hJSON.SetFloat("time", time);
+    hJSON.SetFloat("sync", sync);
+    hJSON.SetInt("strafes", strafes);
+    hJSON.SetInt("jumps", jumps);
+    hJSON.SetInt("date", sDate);
+    hJSON.SetInt("tickrate", gI_Tickrate);
+    hJSON.SetInt("style", n_Style);
+    hJSON.SetNull("replayfile");
+
+    // Use the provided replay file path (guaranteed to be the correct, newly saved replay)
+    if (FileExists(replayPath) && isWR)
+    {
+        DebugPrint("Reading replay file from provided path: %s", replayPath);
+        File fFile = OpenFile(replayPath, "rb");
 
         if (fFile != null && fFile.Seek(0, SEEK_END))
         {
@@ -610,8 +655,16 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
             Crypt_Base64Encode(sFileContents, sFileContentsEncoded, (iSize * 2), iSize);
 
             hJSON.SetString("replayfile", sFileContentsEncoded);
+            DebugPrint("Replay file successfully encoded and attached");
         }
-        delete fFile;
+        else {
+            delete fFile;
+            DebugPrint("Failed to read replay file from path: %s", replayPath);
+        }
+    }
+    else {
+        DebugPrint("Replay file not found or not a WR: exists=%s, isWR=%s", 
+                  FileExists(replayPath) ? "true" : "false", isWR ? "true" : "false");
     }
 
     hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
