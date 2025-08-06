@@ -1265,7 +1265,7 @@ public void Callback_OnUpdateCheck(HTTPResponse resp, any value)
     data.GetString("tag_name", gS_LatestVersion, sizeof(gS_LatestVersion));
     DebugPrint("Latest version from GitHub: %s, Current version: %s", gS_LatestVersion, gS_CurrentVersion);
     
-    if (!forceUpdate && strcmp(gS_LatestVersion, gS_CurrentVersion) <= 0)
+    if (!forceUpdate && !IsNewerVersion(gS_LatestVersion, gS_CurrentVersion))
     {
         DebugPrint("Plugin is up to date");
         if (client > 0)
@@ -1542,4 +1542,41 @@ void UpdateConfigFile()
     }
     
     delete lines;
+}
+
+// Version comparison function - returns true if version1 is newer than version2
+bool IsNewerVersion(const char[] version1, const char[] version2)
+{
+    // Remove 'v' prefix if present
+    char v1[32], v2[32];
+    strcopy(v1, sizeof(v1), version1);
+    strcopy(v2, sizeof(v2), version2);
+    
+    if (v1[0] == 'v') {
+        strcopy(v1, sizeof(v1), v1[1]);
+    }
+    if (v2[0] == 'v') {
+        strcopy(v2, sizeof(v2), v2[1]);
+    }
+    
+    // Split versions into parts (e.g., "1.2.3" -> [1, 2, 3])
+    char parts1[4][16], parts2[4][16];
+    int count1 = ExplodeString(v1, ".", parts1, sizeof(parts1), sizeof(parts1[]));
+    int count2 = ExplodeString(v2, ".", parts2, sizeof(parts2), sizeof(parts2[]));
+    
+    // Compare each part
+    int maxParts = (count1 > count2) ? count1 : count2;
+    for (int i = 0; i < maxParts; i++)
+    {
+        int num1 = (i < count1) ? StringToInt(parts1[i]) : 0;
+        int num2 = (i < count2) ? StringToInt(parts2[i]) : 0;
+        
+        if (num1 > num2) {
+            return true;
+        } else if (num1 < num2) {
+            return false;
+        }
+    }
+    
+    return false; // Versions are equal
 }
