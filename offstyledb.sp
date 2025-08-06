@@ -1198,7 +1198,9 @@ void CheckGitHubReleaseHash()
     DebugPrint("Checking GitHub for latest release version");
     
     HTTPRequest hHTTPRequest = new HTTPRequest("https://api.github.com/repos/offstyles/offstyle-plugins/releases/latest");
-    hHTTPRequest.SetHeader("User-Agent", "SourceMod-OSdb-Plugin");
+    hHTTPRequest.SetHeader("User-Agent", "SourceMod-OSdb-Plugin/1.0");
+    hHTTPRequest.SetHeader("Accept", "application/vnd.github.v3+json");
+    hHTTPRequest.SetHeader("Accept-Encoding", "identity");  // Disable compression to avoid truncation
     
     hHTTPRequest.Get(Callback_OnReleaseHashCheck, 0);
 }
@@ -1216,7 +1218,28 @@ public void Callback_OnReleaseHashCheck(HTTPResponse resp, any value)
         return;
     }
     
+    // Add debugging for response data
+    char responseDebug[512];
+    resp.Data.ToString(responseDebug, sizeof(responseDebug));
+    DebugPrint("GitHub API response preview: %.500s", responseDebug);
+    DebugPrint("Response data string length: %d characters", strlen(responseDebug));
+    
+    // Check if response looks like valid JSON before parsing
+    if (strlen(responseDebug) < 10 || responseDebug[0] != '{')
+    {
+        LogError("[OSdb] GitHub release response doesn't appear to be valid JSON");
+        DebugPrint("Response doesn't start with '{' or is too short");
+        return;
+    }
+    
     JSONObject data = view_as<JSONObject>(resp.Data);
+    
+    if (data == null)
+    {
+        LogError("[OSdb] Failed to parse GitHub release JSON response");
+        DebugPrint("JSON parsing returned null - response may be truncated or malformed");
+        return;
+    }
     
     if (!data.HasKey("tag_name"))
     {
@@ -1323,7 +1346,9 @@ void CheckForUpdates(int client, bool forceUpdate = false)
     DebugPrint("Starting update check (force: %s)", forceUpdate ? "true" : "false");
     
     HTTPRequest hHTTPRequest = new HTTPRequest("https://api.github.com/repos/offstyles/offstyle-plugins/releases/latest");
-    hHTTPRequest.SetHeader("User-Agent", "SourceMod-OSdb-Plugin");
+    hHTTPRequest.SetHeader("User-Agent", "SourceMod-OSdb-Plugin/1.0");
+    hHTTPRequest.SetHeader("Accept", "application/vnd.github.v3+json");
+    hHTTPRequest.SetHeader("Accept-Encoding", "identity");  // Disable compression to avoid truncation
     
     DataPack pack = new DataPack();
     pack.WriteCell(client);
@@ -1356,7 +1381,36 @@ public void Callback_OnUpdateCheck(HTTPResponse resp, any value)
         return;
     }
     
+    // Add debugging for response data
+    char responseDebug[512];
+    resp.Data.ToString(responseDebug, sizeof(responseDebug));
+    DebugPrint("GitHub API response preview: %.500s", responseDebug);
+    DebugPrint("Response data string length: %d characters", strlen(responseDebug));
+    
+    // Check if response looks like valid JSON before parsing
+    if (strlen(responseDebug) < 10 || responseDebug[0] != '{')
+    {
+        LogError("[OSdb] GitHub update response doesn't appear to be valid JSON");
+        DebugPrint("Response doesn't start with '{' or is too short");
+        if (client > 0)
+        {
+            ReplyToCommand(client, "[OSdb] Update check failed: Invalid response from GitHub API.");
+        }
+        return;
+    }
+    
     JSONObject data = view_as<JSONObject>(resp.Data);
+    
+    if (data == null)
+    {
+        LogError("[OSdb] Failed to parse GitHub update JSON response");
+        DebugPrint("JSON parsing returned null - response may be truncated or malformed");
+        if (client > 0)
+        {
+            ReplyToCommand(client, "[OSdb] Update check failed: Unable to parse GitHub response.");
+        }
+        return;
+    }
     
     if (!data.HasKey("tag_name") || !data.HasKey("assets"))
     {
