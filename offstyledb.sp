@@ -80,7 +80,7 @@ bool      gB_UpdateCheckInProgress = false;
 char      gS_CurrentVersion[32] = "0.0.2";
 char      gS_LatestVersion[32];
 char      gS_UpdateDownloadURL[256];
-char      gS_PluginFileHash[160];  // Current plugin file hash
+char      gS_LastCheckedVersion[32];  // Last checked GitHub release version
 
 public Plugin myinfo =
 {
@@ -347,10 +347,10 @@ public void OnMapStart()
     gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
     DebugPrint("Tickrate calculated: %d", gI_Tickrate);
     
-    // Check for updates based on file hash instead of timer
+    // Check for updates based on GitHub release hash instead of local file
     if (gCV_AllowAutoUpdate != null && gCV_AllowAutoUpdate.BoolValue)
     {
-        CheckPluginFileHash();
+        CheckGitHubReleaseHash();
     }
 }
 
@@ -1185,97 +1185,108 @@ int Crypt_Base64Encode(const char[] sString, char[] sResult, int len, int source
 }
 
 // Auto-updater functions
-void CheckPluginFileHash()
+void CheckGitHubReleaseHash()
 {
     if (gB_UpdateCheckInProgress)
     {
-        DebugPrint("Update check already in progress, skipping hash check");
+        DebugPrint("Update check already in progress, skipping release check");
         return;
     }
     
-    char pluginPath[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, pluginPath, sizeof(pluginPath), "plugins/offstyledb.smx");
+    gB_UpdateCheckInProgress = true;
     
-    if (!FileExists(pluginPath))
+    DebugPrint("Checking GitHub for latest release version");
+    
+    HTTPRequest hHTTPRequest = new HTTPRequest("https://api.github.com/repos/offstyles/offstyle-plugins/releases/latest");
+    hHTTPRequest.SetHeader("User-Agent", "SourceMod-OSdb-Plugin");
+    
+    hHTTPRequest.Get(Callback_OnReleaseHashCheck, 0);
+}
+
+public void Callback_OnReleaseHashCheck(HTTPResponse resp, any value)
+{
+    gB_UpdateCheckInProgress = false;
+    
+    DebugPrint("GitHub release check callback received - Status: %d", resp.Status);
+    
+    if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
-        DebugPrint("Plugin file not found at: %s", pluginPath);
+        LogError("[OSdb] GitHub release check failed: status = %d", resp.Status);
+        DebugPrint("GitHub release check failed with status %d", resp.Status);
         return;
     }
     
-    // Calculate current file hash
-    char currentHash[160];
-    File fFile = OpenFile(pluginPath, "rb");
-    if (fFile == null)
+    JSONObject data = view_as<JSONObject>(resp.Data);
+    
+    if (!data.HasKey("tag_name"))
     {
-        DebugPrint("Failed to open plugin file for hashing");
+        LogError("[OSdb] Invalid GitHub release response format");
+        DebugPrint("GitHub release response missing tag_name field");
+        delete data;
         return;
     }
     
-    if (!SHA1File(fFile, currentHash))
+    char latestVersion[32];
+    data.GetString("tag_name", latestVersion, sizeof(latestVersion));
+    delete data;
+    
+    // Load stored version
+    char storedVersion[32];
+    LoadStoredReleaseVersion(storedVersion, sizeof(storedVersion));
+    
+    DebugPrint("Latest GitHub release: %s", latestVersion);
+    DebugPrint("Stored release version: %s", storedVersion);
+    
+    // Check if this is a new release or first run
+    if (strlen(storedVersion) == 0 || strcmp(latestVersion, storedVersion) != 0)
     {
-        DebugPrint("Failed to calculate plugin file hash");
-        delete fFile;
-        return;
-    }
-    delete fFile;
-    
-    // Load stored hash
-    char storedHash[160];
-    LoadStoredPluginHash(storedHash, sizeof(storedHash));
-    
-    DebugPrint("Current plugin hash: %s", currentHash);
-    DebugPrint("Stored plugin hash: %s", storedHash);
-    
-    // Check if hash has changed or if this is first run
-    if (strlen(storedHash) == 0 || strcmp(currentHash, storedHash) != 0)
-    {
-        DebugPrint("Plugin file hash changed or first run, checking for updates");
+        DebugPrint("New GitHub release detected or first run, checking for updates");
         
-        // Store the new hash
-        gS_PluginFileHash = currentHash;
-        SavePluginHash(currentHash);
+        // Store the new version
+        gS_LastCheckedVersion = latestVersion;
+        SaveReleaseVersion(latestVersion);
         
-        // Check for updates
+        // Check for updates (this will compare with current plugin version)
         CheckForUpdates(0);
     }
     else
     {
-        DebugPrint("Plugin file hash unchanged, skipping update check");
-        gS_PluginFileHash = currentHash;
+        DebugPrint("No new GitHub releases, skipping update check");
+        gS_LastCheckedVersion = latestVersion;
     }
 }
 
-void LoadStoredPluginHash(char[] buffer, int maxlen)
+void LoadStoredReleaseVersion(char[] buffer, int maxlen)
 {
-    char hashFilePath[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, hashFilePath, sizeof(hashFilePath), "data/osdb_plugin_hash.txt");
+    char versionFilePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, versionFilePath, sizeof(versionFilePath), "data/osdb_release_version.txt");
     
-    File hashFile = OpenFile(hashFilePath, "r");
-    if (hashFile == null)
+    File versionFile = OpenFile(versionFilePath, "r");
+    if (versionFile == null)
     {
-        DebugPrint("Plugin hash file not found, treating as first run");
+        DebugPrint("Release version file not found, treating as first run");
         buffer[0] = '\0';
         return;
     }
     
-    if (!hashFile.ReadLine(buffer, maxlen))
+    if (!versionFile.ReadLine(buffer, maxlen))
     {
-        DebugPrint("Failed to read plugin hash from file");
+        DebugPrint("Failed to read release version from file");
         buffer[0] = '\0';
     }
     else
     {
         TrimString(buffer);
-        DebugPrint("Loaded stored plugin hash: %s", buffer);
+        DebugPrint("Loaded stored release version: %s", buffer);
     }
     
-    delete hashFile;
+    delete versionFile;
 }
 
-void SavePluginHash(const char[] hash)
+void SaveReleaseVersion(const char[] version)
 {
-    char hashFilePath[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, hashFilePath, sizeof(hashFilePath), "data/osdb_plugin_hash.txt");
+    char versionFilePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, versionFilePath, sizeof(versionFilePath), "data/osdb_release_version.txt");
     
     // Ensure data directory exists
     char dataPath[PLATFORM_MAX_PATH];
@@ -1286,17 +1297,17 @@ void SavePluginHash(const char[] hash)
         DebugPrint("Created data directory: %s", dataPath);
     }
     
-    File hashFile = OpenFile(hashFilePath, "w");
-    if (hashFile == null)
+    File versionFile = OpenFile(versionFilePath, "w");
+    if (versionFile == null)
     {
-        LogError("[OSdb] Failed to create plugin hash file");
+        LogError("[OSdb] Failed to create release version file");
         return;
     }
     
-    hashFile.WriteLine(hash);
-    delete hashFile;
+    versionFile.WriteLine(version);
+    delete versionFile;
     
-    DebugPrint("Saved plugin hash to file: %s", hash);
+    DebugPrint("Saved GitHub release version to file: %s", version);
 }
 
 void CheckForUpdates(int client, bool forceUpdate = false)
@@ -1532,20 +1543,12 @@ void InstallUpdate(int client, const char[] downloadPath)
     
     DebugPrint("Plugin file successfully updated");
     
-    // Calculate and save new plugin file hash
-    char newHash[160];
-    File fFile = OpenFile(pluginPath, "rb");
-    if (fFile != null && SHA1File(fFile, newHash))
+    // Update stored release version after successful installation
+    if (strlen(gS_LatestVersion) > 0)
     {
-        gS_PluginFileHash = newHash;
-        SavePluginHash(newHash);
-        DebugPrint("Updated plugin file hash: %s", newHash);
-        delete fFile;
-    }
-    else
-    {
-        if (fFile != null) delete fFile;
-        DebugPrint("Warning: Could not calculate hash for updated plugin file");
+        gS_LastCheckedVersion = gS_LatestVersion;
+        SaveReleaseVersion(gS_LatestVersion);
+        DebugPrint("Updated stored release version to: %s", gS_LatestVersion);
     }
     
     // Update configuration file with any new ConVars
