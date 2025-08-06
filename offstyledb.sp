@@ -80,7 +80,7 @@ bool      gB_UpdateCheckInProgress = false;
 char      gS_CurrentVersion[32] = "0.0.2";
 char      gS_LatestVersion[32];
 char      gS_UpdateDownloadURL[256];
-float     gF_LastUpdateCheck = 0.0;
+char      gS_PluginFileHash[160];  // Current plugin file hash
 
 public Plugin myinfo =
 {
@@ -347,10 +347,10 @@ public void OnMapStart()
     gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
     DebugPrint("Tickrate calculated: %d", gI_Tickrate);
     
-    // Check for updates on map start if auto-update is enabled
+    // Check for updates based on file hash instead of timer
     if (gCV_AllowAutoUpdate != null && gCV_AllowAutoUpdate.BoolValue)
     {
-        CreateTimer(30.0, Timer_CheckForUpdates, _, TIMER_FLAG_NO_MAPCHANGE);
+        CheckPluginFileHash();
     }
 }
 
@@ -1185,24 +1185,118 @@ int Crypt_Base64Encode(const char[] sString, char[] sResult, int len, int source
 }
 
 // Auto-updater functions
-public Action Timer_CheckForUpdates(Handle timer)
+void CheckPluginFileHash()
 {
-    if (gCV_AllowAutoUpdate == null || !gCV_AllowAutoUpdate.BoolValue)
+    if (gB_UpdateCheckInProgress)
     {
-        return Plugin_Stop;
+        DebugPrint("Update check already in progress, skipping hash check");
+        return;
     }
     
-    float currentTime = GetGameTime();
-    // Check at most once every 30 minutes
-    if (currentTime - gF_LastUpdateCheck < 1800.0)
+    char pluginPath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, pluginPath, sizeof(pluginPath), "plugins/offstyledb.smx");
+    
+    if (!FileExists(pluginPath))
     {
-        return Plugin_Continue;
+        DebugPrint("Plugin file not found at: %s", pluginPath);
+        return;
     }
     
-    DebugPrint("Timer-based update check triggered");
-    CheckForUpdates(0);
+    // Calculate current file hash
+    char currentHash[160];
+    File fFile = OpenFile(pluginPath, "rb");
+    if (fFile == null)
+    {
+        DebugPrint("Failed to open plugin file for hashing");
+        return;
+    }
     
-    return Plugin_Continue;
+    if (!SHA1File(fFile, currentHash))
+    {
+        DebugPrint("Failed to calculate plugin file hash");
+        delete fFile;
+        return;
+    }
+    delete fFile;
+    
+    // Load stored hash
+    char storedHash[160];
+    LoadStoredPluginHash(storedHash, sizeof(storedHash));
+    
+    DebugPrint("Current plugin hash: %s", currentHash);
+    DebugPrint("Stored plugin hash: %s", storedHash);
+    
+    // Check if hash has changed or if this is first run
+    if (strlen(storedHash) == 0 || strcmp(currentHash, storedHash) != 0)
+    {
+        DebugPrint("Plugin file hash changed or first run, checking for updates");
+        
+        // Store the new hash
+        gS_PluginFileHash = currentHash;
+        SavePluginHash(currentHash);
+        
+        // Check for updates
+        CheckForUpdates(0);
+    }
+    else
+    {
+        DebugPrint("Plugin file hash unchanged, skipping update check");
+        gS_PluginFileHash = currentHash;
+    }
+}
+
+void LoadStoredPluginHash(char[] buffer, int maxlen)
+{
+    char hashFilePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, hashFilePath, sizeof(hashFilePath), "data/osdb_plugin_hash.txt");
+    
+    File hashFile = OpenFile(hashFilePath, "r");
+    if (hashFile == null)
+    {
+        DebugPrint("Plugin hash file not found, treating as first run");
+        buffer[0] = '\0';
+        return;
+    }
+    
+    if (!hashFile.ReadLine(buffer, maxlen))
+    {
+        DebugPrint("Failed to read plugin hash from file");
+        buffer[0] = '\0';
+    }
+    else
+    {
+        TrimString(buffer);
+        DebugPrint("Loaded stored plugin hash: %s", buffer);
+    }
+    
+    delete hashFile;
+}
+
+void SavePluginHash(const char[] hash)
+{
+    char hashFilePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, hashFilePath, sizeof(hashFilePath), "data/osdb_plugin_hash.txt");
+    
+    // Ensure data directory exists
+    char dataPath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, dataPath, sizeof(dataPath), "data");
+    if (!DirExists(dataPath))
+    {
+        CreateDirectory(dataPath, 755);
+        DebugPrint("Created data directory: %s", dataPath);
+    }
+    
+    File hashFile = OpenFile(hashFilePath, "w");
+    if (hashFile == null)
+    {
+        LogError("[OSdb] Failed to create plugin hash file");
+        return;
+    }
+    
+    hashFile.WriteLine(hash);
+    delete hashFile;
+    
+    DebugPrint("Saved plugin hash to file: %s", hash);
 }
 
 void CheckForUpdates(int client, bool forceUpdate = false)
@@ -1214,7 +1308,6 @@ void CheckForUpdates(int client, bool forceUpdate = false)
     }
     
     gB_UpdateCheckInProgress = true;
-    gF_LastUpdateCheck = GetGameTime();
     
     DebugPrint("Starting update check (force: %s)", forceUpdate ? "true" : "false");
     
@@ -1438,6 +1531,22 @@ void InstallUpdate(int client, const char[] downloadPath)
     }
     
     DebugPrint("Plugin file successfully updated");
+    
+    // Calculate and save new plugin file hash
+    char newHash[160];
+    File fFile = OpenFile(pluginPath, "rb");
+    if (fFile != null && SHA1File(fFile, newHash))
+    {
+        gS_PluginFileHash = newHash;
+        SavePluginHash(newHash);
+        DebugPrint("Updated plugin file hash: %s", newHash);
+        delete fFile;
+    }
+    else
+    {
+        if (fFile != null) delete fFile;
+        DebugPrint("Warning: Could not calculate hash for updated plugin file");
+    }
     
     // Update configuration file with any new ConVars
     UpdateConfigFile();
