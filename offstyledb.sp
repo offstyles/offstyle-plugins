@@ -57,6 +57,9 @@ int       gI_TotalRecords = 0;
 ArrayList  gA_AllRecords = null;
 int       gI_BatchSize = 5000;
 ConVar    gCV_ExtendedDebugging = null;
+ConVar    gCV_SubmitMode = null;         // 0=WRs only, 1=all times (default)
+ConVar    gCV_BulkUploadMode = null;     // -1=no times, 0=WRs only (default), 1=all times  
+ConVar    gCV_ReplayMode = null;         // -1=never, 0=WRs only (default), 1=all times
 
 // Helper function for debug logging
 void DebugPrint(const char[] format, any ...)
@@ -94,6 +97,9 @@ public void OnPluginStart()
     RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
 
     gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+    gCV_SubmitMode = CreateConVar("OSdb_submit_mode", "1", "Submit only WRs (0) or all times (1)?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+    gCV_BulkUploadMode = CreateConVar("OSdb_bulk_upload_mode", "0", "Bulk upload: no times (-1), only WRs (0), or all times (1)?", FCVAR_DONTRECORD, true, -1.0, true, 1.0);
+    gCV_ReplayMode = CreateConVar("OSdb_replay_mode", "0", "Replay attachment: never (-1), WRs only (0), or all times (1)?", FCVAR_DONTRECORD, true, -1.0, true, 1.0);
     gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
     gCV_Authentication = CreateConVar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.");
 
@@ -499,6 +505,9 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
     if (time > Shavit_GetWorldRecord(style, track)) {
         return;
     }
+    
+    // WRs are always submitted regardless of submit mode (both 0 and 1 allow WRs)
+    DebugPrint("Submitting WR with replay, submit mode = %d", gCV_SubmitMode.IntValue);
 
     char sMap[64];
     GetCurrentMap(sMap, sizeof(sMap));
@@ -529,6 +538,13 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     if (time > Shavit_GetWorldRecord(style, track))
     {
         isWR = false;
+        
+        // Check submit mode - if set to 0 (WRs only), don't submit non-WR times
+        if (gCV_SubmitMode.IntValue == 0)
+        {
+            DebugPrint("Skipping non-WR submission due to submit mode = 0 (WRs only)");
+            return;
+        }
     }
     else {
         isWR = true;
@@ -636,8 +652,30 @@ void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate,
     hJSON.SetInt("style", n_Style);
     hJSON.SetNull("replayfile");
 
-    // Use the provided replay file path (guaranteed to be the correct, newly saved replay)
-    if (FileExists(replayPath) && isWR)
+    // Use the provided replay file path based on replay mode
+    int replayMode = gCV_ReplayMode.IntValue;
+    bool shouldAttachReplay = false;
+    
+    if (replayMode == -1)
+    {
+        // Never attach replays
+        shouldAttachReplay = false;
+        DebugPrint("Replay attachment disabled (mode = -1)");
+    }
+    else if (replayMode == 0)
+    {
+        // Only attach replays for WRs (default behavior)
+        shouldAttachReplay = isWR;
+        DebugPrint("Replay attachment for WRs only (mode = 0), isWR = %s", isWR ? "true" : "false");
+    }
+    else if (replayMode == 1)
+    {
+        // Attach replays for all times (future feature - currently only WRs have replay paths)
+        shouldAttachReplay = true;
+        DebugPrint("Replay attachment for all times (mode = 1)");
+    }
+    
+    if (FileExists(replayPath) && shouldAttachReplay)
     {
         DebugPrint("Reading replay file from provided path: %s", replayPath);
         File fFile = OpenFile(replayPath, "rb");
@@ -663,8 +701,8 @@ void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate,
         }
     }
     else {
-        DebugPrint("Replay file not found or not a WR: exists=%s, isWR=%s", 
-                  FileExists(replayPath) ? "true" : "false", isWR ? "true" : "false");
+        DebugPrint("Replay not attached: file_exists=%s, should_attach=%s, replay_mode=%d", 
+                  FileExists(replayPath) ? "true" : "false", shouldAttachReplay ? "true" : "false", replayMode);
     }
 
     hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
@@ -822,25 +860,38 @@ void SendRecordDatabase()
 {
     DebugPrint("Starting record database query");
     
+    int bulkMode = gCV_BulkUploadMode.IntValue;
+    DebugPrint("Bulk upload mode: %d (-1=no times, 0=WRs only, 1=all times)", bulkMode);
+    
+    if (bulkMode == -1)
+    {
+        PrintToServer("[OSdb] Bulk upload disabled (mode = -1), skipping record collection");
+        DebugPrint("Bulk upload skipped due to mode = -1");
+        return;
+    }
+    
     char sQuery[1024];
     switch (gI_TimerVersion)
     {
         case TimerVersion_shavit:
         {
-            // Original, incase we fuck it up somehow
-            // FormatEx(sQuery, sizeof(sQuery),
-            // 	"SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date, a.style FROM %splayertimes a " ...
-            // 	"JOIN (SELECT MIN(time) time, map, style, track FROM %splayertimes GROUP by map, style, track) b " ...
-            // 	"JOIN %susers u ON a.time = b.time AND a.auth = u.auth AND a.map = b.map AND a.style = b.style AND a.track = b.track " ...
-            // 	// "WHERE a.style = 0 AND a.track = 0 " ...
-            // 	"WHERE a.track = 0" ...
-            // 	"ORDER BY a.date DESC;", gS_MySQLPrefix, gS_MySQLPrefix, gS_MySQLPrefix);
-
-            FormatEx(sQuery, sizeof(sQuery),
-                     "SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date, a.style FROM %splayertimes a " ... "JOIN (SELECT MIN(time) time, map, style, track FROM %splayertimes GROUP by map, style, track) b " ... "JOIN %susers u ON a.time = b.time AND a.auth = u.auth AND a.map = b.map AND a.style = b.style AND a.track = b.track " ...
-                     // "WHERE a.style = 0 AND a.track = 0 " ...
-                     "WHERE a.track = 0 " ... "ORDER BY a.date DESC;",
-                     gS_MySQLPrefix, gS_MySQLPrefix, gS_MySQLPrefix);
+            if (bulkMode == 0)
+            {
+                // Only WRs (default behavior) - use MIN(time) join to get only best times
+                FormatEx(sQuery, sizeof(sQuery),
+                         "SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date, a.style FROM %splayertimes a " ... "JOIN (SELECT MIN(time) time, map, style, track FROM %splayertimes GROUP by map, style, track) b " ... "JOIN %susers u ON a.time = b.time AND a.auth = u.auth AND a.map = b.map AND a.style = b.style AND a.track = b.track " ...
+                         "WHERE a.track = 0 " ... "ORDER BY a.date DESC;",
+                         gS_MySQLPrefix, gS_MySQLPrefix, gS_MySQLPrefix);
+            }
+            else if (bulkMode == 1)
+            {
+                // All times - don't use MIN(time) join, get all personal best times
+                FormatEx(sQuery, sizeof(sQuery),
+                         "SELECT a.map, u.auth AS steamid, u.name, a.time, a.sync, a.strafes, a.jumps, a.date, a.style FROM %splayertimes a " ...
+                         "JOIN %susers u ON a.auth = u.auth " ...
+                         "WHERE a.track = 0 " ... "ORDER BY a.date DESC;",
+                         gS_MySQLPrefix, gS_MySQLPrefix);
+            }
         }
     }
 
