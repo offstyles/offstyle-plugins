@@ -22,8 +22,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    - name: Make compile script executable
-      run: chmod +x compile.sh
+    - name: Make compile script and compiler executable
+      run: |
+        chmod +x compile.sh
+        chmod +x spcomp spcomp64
       
     - name: Compile plugin
       run: ./compile.sh offstyledb.sp
