@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release'
+        required: true
+        default: 'v0.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Make compile script executable
+      run: chmod +x compile.sh
+      
+    - name: Compile plugin
+      run: ./compile.sh offstyledb.sp
+      
+    - name: Check if compiled file exists
+      run: |
+        if [ ! -f "./compiled/offstyledb.smx" ]; then
+          echo "Error: Compiled plugin not found!"
+          exit 1
+        fi
+        ls -la compiled/
+      
+    - name: Get tag name
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "tag_name=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+      
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_tag.outputs.tag_name }}
+        release_name: Release ${{ steps.get_tag.outputs.tag_name }}
+        body: |
+          Automated release of Offstyle Database plugin
+          
+          ## Changes
+          - Compiled SourcePawn plugin ready for deployment
+          
+          ## Installation
+          1. Download `offstyledb.smx`
+          2. Upload to your SourceMod plugins directory
+          3. Restart your server or use `sm plugins reload offstyledb`
+        draft: false
+        prerelease: false
+      
+    - name: Upload Plugin Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./compiled/offstyledb.smx
+        asset_name: offstyledb.smx
+        asset_content_type: application/octet-stream
