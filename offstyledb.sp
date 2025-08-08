@@ -306,7 +306,7 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
         gM_StyleMapping.Clear();
     }
 
-    const int MAX_STYLES = 128;    // fucking Hope people arent adding this many....
+    const int MAX_STYLES = 512;    // fucking Hope people arent adding this many....
     char      parts[MAX_STYLES][8];
 
     int       count = ExplodeString(s_Data, ",", parts, sizeof(parts), sizeof(parts[]));
