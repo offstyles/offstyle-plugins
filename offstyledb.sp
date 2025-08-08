@@ -109,7 +109,7 @@ public void OnPluginStart()
 
     gM_StyleMapping = new StringMap();
 
-    DebugPrint("OSdb plugin started, commands registered, ConVars created");
+    DebugPrint("[OSdb] OSdb plugin started, commands registered, ConVars created");
 
     // SourceJump_DebugLog("OSdb database plugin loaded.");
 }
@@ -132,7 +132,7 @@ public void OnAllPluginsLoaded()
 
     switch (gI_TimerVersion)
     {
-        case TimerVersion_Unknown: SetFailState("Supported timer plugin was not found.");
+        case TimerVersion_Unknown: SetFailState("[OSdb] Supported timer plugin was not found.");
 
         case TimerVersion_shavit:
         {
@@ -155,7 +155,7 @@ public void OnConfigsExecuted()
 
 void GetStyleMapping(bool forceRefresh = false)
 {
-    DebugPrint("Starting style mapping request (forceRefresh: %s)", forceRefresh ? "true" : "false");
+    DebugPrint("[OSdb] Starting style mapping request (forceRefresh: %s)", forceRefresh ? "true" : "false");
     
     if (!forceRefresh)
     {
@@ -165,16 +165,16 @@ void GetStyleMapping(bool forceRefresh = false)
 
         if (strcmp(temp, gS_StyleHash) == 0)
         {
-            DebugPrint("Style hash unchanged, skipping mapping request");
+            DebugPrint("[OSdb] Style hash unchanged, skipping mapping request");
             return;
         }
     }
     else
     {
-        DebugPrint("Force refresh requested, bypassing hash check");
+        DebugPrint("[OSdb] Force refresh requested, bypassing hash check");
     }
 
-    DebugPrint("Style hash changed or forced refresh, requesting new mapping from server");
+    DebugPrint("[OSdb] Style hash changed or forced refresh, requesting new mapping from server");
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSONObject = new JSONObject();
@@ -225,23 +225,23 @@ int ConvertStyle(int style)
     if (gM_StyleMapping == null)
     {
         LogError("[OSdb] Style mapping is null in ConvertStyle");
-        DebugPrint("ConvertStyle called but style mapping is null");
+        DebugPrint("[OSdb] ConvertStyle called but style mapping is null");
         return -1;
     }
     
     char s[16];
     IntToString(style, s, sizeof(s));
 
-    DebugPrint("Converting style %d (key: %s)", style, s);
+    DebugPrint("[OSdb] Converting style %d (key: %s)", style, s);
 
     int out;
     if (gM_StyleMapping.GetValue(s, out))
     {
-        DebugPrint("Style %d converted to %d", style, out);
+        DebugPrint("[OSdb] Style %d converted to %d", style, out);
         return out;
     }
 
-    DebugPrint("Style %d not found in mapping, returning -1", style);
+    DebugPrint("[OSdb] Style %d not found in mapping, returning -1", style);
     return -1;
 }
 
@@ -272,17 +272,17 @@ void HashStyleConfig()
 
 public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 {
-    DebugPrint("Style mapping callback received - Status: %d", resp.Status);
+    DebugPrint("[OSdb] Style mapping callback received - Status: %d", resp.Status);
     
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
         LogError("[OSdb] Style Mapping failed: status = %d, data = null", resp.Status);
-        DebugPrint("Style mapping failed with status %d", resp.Status);
-        SetFailState("Style Mapping returned non-ok response");
+        DebugPrint("[OSdb] Style mapping failed with status %d", resp.Status);
+        SetFailState("[OSdb] Style Mapping returned non-ok response");
         return;
     }
 
-    DebugPrint("Style mapping response received successfully");
+    DebugPrint("[OSdb] Style mapping response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     char       s_Data[512];
@@ -290,19 +290,19 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
     // dont think we need to do it here, but doing it anyway
     delete data;
 
-    DebugPrint("Style mapping data extracted: %s", s_Data);
+    DebugPrint("[OSdb] Style mapping data extracted: %s", s_Data);
 
     // check if StringMap is still valid FUCKING INVALID HANDLE
     if (gM_StyleMapping == null)
     {
         LogError("[OSdb] Style mapping handle is null, recreating...");
-        DebugPrint("Style mapping handle was null, recreating");
+        DebugPrint("[OSdb] Style mapping handle was null, recreating");
         gM_StyleMapping = new StringMap();
     }
 
     if (gM_StyleMapping.Size > 0)
     {
-        DebugPrint("Clearing existing style mapping (%d entries)", gM_StyleMapping.Size);
+        DebugPrint("[OSdb] Clearing existing style mapping (%d entries)", gM_StyleMapping.Size);
         gM_StyleMapping.Clear();
     }
 
@@ -311,7 +311,7 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 
     int       count = ExplodeString(s_Data, ",", parts, sizeof(parts), sizeof(parts[]));
     
-    DebugPrint("Processing style mapping with %d parts", count);
+    DebugPrint("[OSdb] Processing style mapping with %d parts", count);
 
     for (int i = 0; i < count - 1; i += 2)
     {
@@ -321,42 +321,42 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
         int ivalue = StringToInt(parts[i + 1]);
 
         gM_StyleMapping.SetValue(key, ivalue);
-        DebugPrint("Mapped style %s -> %d", key, ivalue);
+        DebugPrint("[OSdb] Mapped style %s -> %d", key, ivalue);
     }
     
-    DebugPrint("Style mapping completed with %d styles", gM_StyleMapping.Size);
+    DebugPrint("[OSdb] Style mapping completed with %d styles", gM_StyleMapping.Size);
 }
 
 public void OnMapStart()
 {
     char sMapName[256];
     GetCurrentMap(sMapName, sizeof(sMapName));
-    DebugPrint("Map started: %s", sMapName);
+    DebugPrint("[OSdb] Map started: %s", sMapName);
     
     gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
-    DebugPrint("Tickrate calculated: %d", gI_Tickrate);
+    DebugPrint("[OSdb] Tickrate calculated: %d", gI_Tickrate);
 }
 
 public void OnMapEnd()
 {   
-    DebugPrint("Map ending, requesting style mapping");
+    DebugPrint("[OSdb] Map ending, requesting style mapping");
     GetStyleMapping();
 }
 
 public void OnPluginEnd()
 {
-    DebugPrint("Plugin shutting down, cleaning up resources");
+    DebugPrint("[OSdb] Plugin shutting down, cleaning up resources");
     
     if (gA_AllRecords != null)
     {
-        DebugPrint("Cleaning up AllRecords ArrayList");
+        DebugPrint("[OSdb] Cleaning up AllRecords ArrayList");
         delete gA_AllRecords;
         gA_AllRecords = null;
     }
     
     if (gM_StyleMapping != null)
     {
-        DebugPrint("Cleaning up StyleMapping StringMap");
+        DebugPrint("[OSdb] Cleaning up StyleMapping StringMap");
         delete gM_StyleMapping;
         gM_StyleMapping = null;
     }
@@ -364,19 +364,19 @@ public void OnPluginEnd()
 
 public Action Command_SendAllWRs(int client, int args)
 {
-    DebugPrint("Command_SendAllWRs called by client %d", client);
+    DebugPrint("[OSdb] Command_SendAllWRs called by client %d", client);
     
     int  iSteamID = GetSteamAccountID(client);
     bool bAllowed = false;
 
-    DebugPrint("Checking authorization for SteamID %d", iSteamID);
+    DebugPrint("[OSdb] Checking authorization for SteamID %d", iSteamID);
 
     for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
     {
         if (iSteamID == gI_SteamIDWhitelist[i])
         {
             bAllowed = true;
-            DebugPrint("SteamID %d found in whitelist at index %d", iSteamID, i);
+            DebugPrint("[OSdb] SteamID %d found in whitelist at index %d", iSteamID, i);
             break;
         }
     }
@@ -384,19 +384,19 @@ public Action Command_SendAllWRs(int client, int args)
     if (!bAllowed)
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to fetch the records list.");
-        DebugPrint("SteamID %d not authorized for bulk operations", iSteamID);
+        DebugPrint("[OSdb] SteamID %d not authorized for bulk operations", iSteamID);
         return Plugin_Handled;
     }
 
     if (gB_IsProcessingBatches)
     {
         ReplyToCommand(client, "[OSdb] Already processing batches. Please wait for current operation to complete.");
-        DebugPrint("Bulk operation request denied - already processing batches");
+        DebugPrint("[OSdb] Bulk operation request denied - already processing batches");
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Requesting bulk verification...");
-    DebugPrint("Starting bulk verification request");
+    DebugPrint("[OSdb] Starting bulk verification request");
     RequestBulkVerification();
 
     return Plugin_Handled;
@@ -404,19 +404,19 @@ public Action Command_SendAllWRs(int client, int args)
 
 public Action Command_ViewStyleMap(int client, int args)
 {
-    DebugPrint("Command_ViewStyleMap called by client %d", client);
+    DebugPrint("[OSdb] Command_ViewStyleMap called by client %d", client);
     
     if (gM_StyleMapping == null || gM_StyleMapping.Size == 0)
     {
         PrintToChat(client, "[OSdb] Style map is empty or null");
-        DebugPrint("Style mapping is null or empty");
+        DebugPrint("[OSdb] Style mapping is null or empty");
         return Plugin_Handled;
     }
 
     StringMapSnapshot snapshot = gM_StyleMapping.Snapshot();
     int               count    = snapshot.Length;
 
-    DebugPrint("Displaying style mapping with %d entries", count);
+    DebugPrint("[OSdb] Displaying style mapping with %d entries", count);
     PrintToChat(client, "[OSdb] Style Mapping (%d entries):", count);
 
     char key[16];
@@ -455,19 +455,19 @@ public Action Command_BatchStatus(int client, int args)
 
 public Action Command_RefreshMapping(int client, int args)
 {
-    DebugPrint("Command_RefreshMapping called by client %d", client);
+    DebugPrint("[OSdb] Command_RefreshMapping called by client %d", client);
     
     int  iSteamID = GetSteamAccountID(client);
     bool bAllowed = false;
 
-    DebugPrint("Checking authorization for SteamID %d", iSteamID);
+    DebugPrint("[OSdb] Checking authorization for SteamID %d", iSteamID);
 
     for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
     {
         if (iSteamID == gI_SteamIDWhitelist[i])
         {
             bAllowed = true;
-            DebugPrint("SteamID %d found in whitelist at index %d", iSteamID, i);
+            DebugPrint("[OSdb] SteamID %d found in whitelist at index %d", iSteamID, i);
             break;
         }
     }
@@ -475,19 +475,19 @@ public Action Command_RefreshMapping(int client, int args)
     if (!bAllowed)
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to refresh the style mapping.");
-        DebugPrint("SteamID %d not authorized for style mapping refresh", iSteamID);
+        DebugPrint("[OSdb] SteamID %d not authorized for style mapping refresh", iSteamID);
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Refreshing style mapping...");
-    DebugPrint("Starting style mapping refresh");
+    DebugPrint("[OSdb] Starting style mapping refresh");
     
     // recreate the StringMap if it's null
     if (gM_StyleMapping == null)
     {
         gM_StyleMapping = new StringMap();
         PrintToServer("[OSdb] Recreated null StringMap handle");
-        DebugPrint("Recreated null StringMap handle");
+        DebugPrint("[OSdb] Recreated null StringMap handle");
     }
     
     GetStyleMapping(true);  // Force refresh
@@ -507,7 +507,7 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
     }
     
     // WRs are always submitted regardless of submit mode (both 0 and 1 allow WRs)
-    DebugPrint("Submitting WR with replay, submit mode = %d", gCV_SubmitMode.IntValue);
+    DebugPrint("[OSdb] Submitting WR with replay, submit mode = %d", gCV_SubmitMode.IntValue);
 
     char sMap[64];
     GetCurrentMap(sMap, sizeof(sMap));
@@ -542,7 +542,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
         // Check submit mode - if set to 0 (WRs only), don't submit non-WR times
         if (gCV_SubmitMode.IntValue == 0)
         {
-            DebugPrint("Skipping non-WR submission due to submit mode = 0 (WRs only)");
+            DebugPrint("[OSdb] Skipping non-WR submission due to submit mode = 0 (WRs only)");
             return;
         }
     }
@@ -569,25 +569,25 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
 
 void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR)
 {
-    DebugPrint("SendRecord called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s", 
+    DebugPrint("[OSdb] SendRecord called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s", 
                sMap, sSteamID, sName, time, style, isWR ? "true" : "false");
     
     if (sv_cheats.BoolValue)
     {
         LogError("[OSdb] Attempted to submit record with sv_cheats enabled. Record data: %s | %s | %s | %s | %f | %f | %d | %d",
                  sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
-        DebugPrint("Record submission blocked due to sv_cheats being enabled");
+        DebugPrint("[OSdb] Record submission blocked due to sv_cheats being enabled");
         return;
     }
 
     int n_Style = ConvertStyle(style);
     if (n_Style == -1)
     {
-        DebugPrint("Style conversion failed for style %d, aborting record submission", style);
+        DebugPrint("[OSdb] Style conversion failed for style %d, aborting record submission", style);
         return;
     }
 
-    DebugPrint("Style %d converted to %d, preparing HTTP request", style, n_Style);
+    DebugPrint("[OSdb] Style %d converted to %d, preparing HTTP request", style, n_Style);
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSON = new JSONObject();
@@ -607,7 +607,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     hJSON.SetNull("replayfile");
 
     // For non-WR submissions, we don't include replay files to avoid race conditions
-    DebugPrint("Non-WR submission, no replay file attached");
+    DebugPrint("[OSdb] Non-WR submission, no replay file attached");
 
     hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
     delete hJSON;
@@ -615,25 +615,25 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
 
 void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR, const char[] replayPath)
 {
-    DebugPrint("SendRecordWithReplay called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s, ReplayPath=%s", 
+    DebugPrint("[OSdb] SendRecordWithReplay called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s, ReplayPath=%s", 
                sMap, sSteamID, sName, time, style, isWR ? "true" : "false", replayPath);
     
     if (sv_cheats.BoolValue)
     {
         LogError("[OSdb] Attempted to submit record with sv_cheats enabled. Record data: %s | %s | %s | %s | %f | %f | %d | %d",
                  sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
-        DebugPrint("Record submission blocked due to sv_cheats being enabled");
+        DebugPrint("[OSdb] Record submission blocked due to sv_cheats being enabled");
         return;
     }
 
     int n_Style = ConvertStyle(style);
     if (n_Style == -1)
     {
-        DebugPrint("Style conversion failed for style %d, aborting record submission", style);
+        DebugPrint("[OSdb] Style conversion failed for style %d, aborting record submission", style);
         return;
     }
 
-    DebugPrint("Style %d converted to %d, preparing HTTP request with replay", style, n_Style);
+    DebugPrint("[OSdb] Style %d converted to %d, preparing HTTP request with replay", style, n_Style);
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSON = new JSONObject();
@@ -660,24 +660,24 @@ void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate,
     {
         // Never attach replays
         shouldAttachReplay = false;
-        DebugPrint("Replay attachment disabled (mode = -1)");
+        DebugPrint("[OSdb] Replay attachment disabled (mode = -1)");
     }
     else if (replayMode == 0)
     {
         // Only attach replays for WRs (default behavior)
         shouldAttachReplay = isWR;
-        DebugPrint("Replay attachment for WRs only (mode = 0), isWR = %s", isWR ? "true" : "false");
+        DebugPrint("[OSdb] Replay attachment for WRs only (mode = 0), isWR = %s", isWR ? "true" : "false");
     }
     else if (replayMode == 1)
     {
         // Attach replays for all times (future feature - currently only WRs have replay paths)
         shouldAttachReplay = true;
-        DebugPrint("Replay attachment for all times (mode = 1)");
+        DebugPrint("[OSdb] Replay attachment for all times (mode = 1)");
     }
     
     if (FileExists(replayPath) && shouldAttachReplay)
     {
-        DebugPrint("Reading replay file from provided path: %s", replayPath);
+        DebugPrint("[OSdb] Reading replay file from provided path: %s", replayPath);
         File fFile = OpenFile(replayPath, "rb");
 
         if (fFile != null && fFile.Seek(0, SEEK_END))
@@ -693,15 +693,15 @@ void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate,
             Crypt_Base64Encode(sFileContents, sFileContentsEncoded, (iSize * 2), iSize);
 
             hJSON.SetString("replayfile", sFileContentsEncoded);
-            DebugPrint("Replay file successfully encoded and attached");
+            DebugPrint("[OSdb] Replay file successfully encoded and attached");
         }
         else {
             delete fFile;
-            DebugPrint("Failed to read replay file from path: %s", replayPath);
+            DebugPrint("[OSdb] Failed to read replay file from path: %s", replayPath);
         }
     }
     else {
-        DebugPrint("Replay not attached: file_exists=%s, should_attach=%s, replay_mode=%d", 
+        DebugPrint("[OSdb] Replay not attached: file_exists=%s, should_attach=%s, replay_mode=%d", 
                   FileExists(replayPath) ? "true" : "false", shouldAttachReplay ? "true" : "false", replayMode);
     }
 
@@ -810,14 +810,14 @@ void OnHttpDummyCallback(HTTPResponse resp, any value)
 
 void RequestBulkVerification()
 {
-    DebugPrint("Starting bulk verification request");
+    DebugPrint("[OSdb] Starting bulk verification request");
     
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_verification");
     AddHeaders(hHTTPRequest);
 
     JSONObject hVerificationBody = new JSONObject();
     
-    DebugPrint("Sending bulk verification request to server");
+    DebugPrint("[OSdb] Sending bulk verification request to server");
     hHTTPRequest.Post(hVerificationBody, Callback_OnBulkVerification);
 
     delete hVerificationBody;
@@ -826,23 +826,23 @@ void RequestBulkVerification()
 
 public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 {
-    DebugPrint("Bulk verification callback received - Status: %d", resp.Status);
+    DebugPrint("[OSdb] Bulk verification callback received - Status: %d", resp.Status);
     
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
         LogError("[OSdb] Bulk verification failed: status = %d, data = null", resp.Status);
-        DebugPrint("Bulk verification failed with status %d", resp.Status);
+        DebugPrint("[OSdb] Bulk verification failed with status %d", resp.Status);
         return;
     }
 
-    DebugPrint("Bulk verification response received successfully");
+    DebugPrint("[OSdb] Bulk verification response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     
     if (!data.HasKey("key_to_send_times"))
     {
         LogError("[OSdb] Bulk verification response missing 'key_to_send_times' field");
-        DebugPrint("Bulk verification response missing required field");
+        DebugPrint("[OSdb] Bulk verification response missing required field");
         delete data;
         return;
     }
@@ -850,7 +850,7 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
     data.GetString("key_to_send_times", gS_BulkCode, sizeof(gS_BulkCode));
     delete data;
     
-    DebugPrint("Bulk code received: %s", gS_BulkCode);
+    DebugPrint("[OSdb] Bulk code received: %s", gS_BulkCode);
     
     PrintToServer("[OSdb] Bulk verification successful, starting record collection...");
     SendRecordDatabase();
@@ -858,15 +858,15 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 
 void SendRecordDatabase()
 {
-    DebugPrint("Starting record database query");
+    DebugPrint("[OSdb] Starting record database query");
     
     int bulkMode = gCV_BulkUploadMode.IntValue;
-    DebugPrint("Bulk upload mode: %d (-1=no times, 0=WRs only, 1=all times)", bulkMode);
+    DebugPrint("[OSdb] Bulk upload mode: %d (-1=no times, 0=WRs only, 1=all times)", bulkMode);
     
     if (bulkMode == -1)
     {
         PrintToServer("[OSdb] Bulk upload disabled (mode = -1), skipping record collection");
-        DebugPrint("Bulk upload skipped due to mode = -1");
+        DebugPrint("[OSdb] Bulk upload skipped due to mode = -1");
         return;
     }
     
@@ -990,7 +990,7 @@ Database GetTimerDatabaseHandle()
     {
         if ((db = SQL_Connect("shavit", true, sError, sizeof(sError))) == null)
         {
-            SetFailState("OSdb plugin startup failed. Reason: %s", sError);
+            SetFailState("[OSdb] OSdb plugin startup failed. Reason: %s", sError);
         }
     }
     else
@@ -1012,7 +1012,7 @@ void GetTimerSQLPrefix(char[] buffer, int maxlen)
     if (fFile == null)
     {
         delete fFile;
-        SetFailState("Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
+        SetFailState("[OSdb] Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
     }
 
     char sLine[PLATFORM_MAX_PATH * 2];
