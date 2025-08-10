@@ -1,3 +1,4 @@
+#include <convar_class>
 #include <sourcemod>
 #include <keyvalues>
 #include <ripext>
@@ -79,7 +80,7 @@ public Plugin myinfo =
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-    version     = "0.0.2",
+    version     = "0.0.4",
     url         = ""
 };
 
@@ -96,14 +97,14 @@ public void OnPluginStart()
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
     RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
 
-    gCV_ExtendedDebugging = CreateConVar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
-    gCV_SubmitMode = CreateConVar("OSdb_submit_mode", "1", "Submit only WRs (0) or all times (1)?", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
-    gCV_BulkUploadMode = CreateConVar("OSdb_bulk_upload_mode", "0", "Bulk upload: no times (-1), only WRs (0), or all times (1)?", FCVAR_DONTRECORD, true, -1.0, true, 1.0);
-    gCV_ReplayMode = CreateConVar("OSdb_replay_mode", "0", "Replay attachment: never (-1), WRs only (0), or all times (1)?", FCVAR_DONTRECORD, true, -1.0, true, 1.0);
-    gCV_PublicIP       = CreateConVar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.");
-    gCV_Authentication = CreateConVar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.");
+    gCV_ExtendedDebugging = new Convar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", 0, true, 0.0, true, 1.0);
+    gCV_SubmitMode = new Convar("OSdb_submit_mode", "1", "Submit only WRs (0) or all times (1)?", 0, true, 0.0, true, 1.0);
+    gCV_BulkUploadMode = new Convar("OSdb_bulk_upload_mode", "0", "Bulk upload (database time sync): no times (-1), only WRs (0), or all times (1)?", 0, true, -1.0, true, 1.0);
+    gCV_ReplayMode = new Convar("OSdb_replay_mode", "0", "Replay attachment: never (-1), WRs only (0), or all times (1)?", 0, true, -1.0, true, 1.0);
+    gCV_PublicIP       = new Convar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.", 0);
+    gCV_Authentication = new Convar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.", 0);
 
-    AutoExecConfig();
+    Convar.AutoExecConfig();
 
     sv_cheats       = FindConVar("sv_cheats");
 
