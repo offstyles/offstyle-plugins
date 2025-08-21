@@ -128,7 +128,6 @@ public void OnAllPluginsLoaded()
         }
     }
 
-    char sError[255];
     strcopy(gS_MySQLPrefix, sizeof(gS_MySQLPrefix), "");
 
     switch (gI_TimerVersion)
