@@ -6,7 +6,7 @@
 
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
-#pragma dynamic 0x8000000
+#pragma dynamic 0x20000000
 #pragma newdecls required
 #pragma semicolon 1
 
