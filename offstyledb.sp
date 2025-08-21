@@ -6,7 +6,7 @@
 
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
-#pragma dynamic 0x20000000
+#pragma dynamic 104857600
 #pragma newdecls required
 #pragma semicolon 1
 
@@ -191,15 +191,15 @@ void GetStyleMapping(bool forceRefresh = false)
 
         if (fFile != null && fFile.Seek(0, SEEK_END))
         {
-            int iSize = (fFile.Position + 1);
+            int iSize = fFile.Position;
             fFile.Seek(0, SEEK_SET);
 
             char[] sFileContents = new char[iSize + 1];
-            fFile.ReadString(sFileContents, (iSize + 1), iSize);
+            fFile.ReadString(sFileContents, iSize + 1, iSize);
             delete fFile;
 
             char[] sFileContentsEncoded = new char[iSize * 2];
-            Crypt_Base64Encode(sFileContents, sFileContentsEncoded, (iSize * 2), iSize);
+            Crypt_Base64Encode(sFileContents, sFileContentsEncoded, iSize * 2, iSize);
 
             hJSONObject.SetString("data", sFileContentsEncoded);
         }
@@ -682,15 +682,15 @@ void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate,
 
         if (fFile != null && fFile.Seek(0, SEEK_END))
         {
-            int iSize = (fFile.Position + 1);
+            int iSize = fFile.Position;
             fFile.Seek(0, SEEK_SET);
 
             char[] sFileContents = new char[iSize + 1];
-            fFile.ReadString(sFileContents, (iSize + 1), iSize);
+            fFile.ReadString(sFileContents, iSize + 1, iSize);
             delete fFile;
 
             char[] sFileContentsEncoded = new char[iSize * 2];
-            Crypt_Base64Encode(sFileContents, sFileContentsEncoded, (iSize * 2), iSize);
+            Crypt_Base64Encode(sFileContents, sFileContentsEncoded, iSize * 2, iSize);
 
             hJSON.SetString("replayfile", sFileContentsEncoded);
             DebugPrint("[OSdb] Replay file successfully encoded and attached");
