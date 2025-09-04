@@ -47,6 +47,38 @@ jobs:
           echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
         fi
       
+    - name: Generate changelog
+      id: changelog
+      run: |
+        git fetch --tags
+        current_tag=${{ steps.get_tag.outputs.tag_name }}
+        previous_tag=$(git tag --sort=-version:refname | sed -n '2p' || echo "")
+        if [ -n "$previous_tag" ]; then
+          commits=$(git log --oneline $previous_tag..$current_tag)
+          body="Automated release of Offstyle Database plugin
+        
+        ## Changes
+        $commits
+        
+        ## Installation
+        1. Download \`offstyledb.smx\`
+        2. Upload to your SourceMod plugins directory
+        3. Restart your server or use \`sm plugins reload offstyledb\`"
+        else
+          body="Automated release of Offstyle Database plugin
+        
+        ## Changes
+        - Initial release
+        
+        ## Installation
+        1. Download \`offstyledb.smx\`
+        2. Upload to your SourceMod plugins directory
+        3. Restart your server or use \`sm plugins reload offstyledb\`"
+        fi
+        echo "body<<EOF" >> $GITHUB_OUTPUT
+        echo "$body" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+      
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -55,16 +87,7 @@ jobs:
       with:
         tag_name: ${{ steps.get_tag.outputs.tag_name }}
         release_name: Release ${{ steps.get_tag.outputs.tag_name }}
-        body: |
-          Automated release of Offstyle Database plugin
-          
-          ## Changes
-          - Compiled SourcePawn plugin ready for deployment
-          
-          ## Installation
-          1. Download `offstyledb.smx`
-          2. Upload to your SourceMod plugins directory
-          3. Restart your server or use `sm plugins reload offstyledb`
+        body: ${{ steps.changelog.outputs.body }}
         draft: false
         prerelease: false
       
