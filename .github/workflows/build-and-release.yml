@@ -50,9 +50,8 @@ jobs:
     - name: Generate changelog
       id: changelog
       run: |
-        git fetch --tags
         current_tag=${{ steps.get_tag.outputs.tag_name }}
-        previous_tag=$(git tag --sort=-version:refname | sed -n '2p' || echo "")
+        previous_tag=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
         if [ -n "$previous_tag" ]; then
           commits=$(git log --oneline $previous_tag..$current_tag)
           body="Automated release of Offstyle Database plugin
