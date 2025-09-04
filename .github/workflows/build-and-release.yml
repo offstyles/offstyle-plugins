@@ -80,23 +80,11 @@ jobs:
         echo "EOF" >> $GITHUB_OUTPUT
       
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_tag.outputs.tag_name }}
-        release_name: Release ${{ steps.get_tag.outputs.tag_name }}
+        name: Release ${{ steps.get_tag.outputs.tag_name }}
         body: ${{ steps.changelog.outputs.body }}
+        files: ./compiled/offstyledb.smx
         draft: false
         prerelease: false
-      
-    - name: Upload Plugin Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./compiled/offstyledb.smx
-        asset_name: offstyledb.smx
-        asset_content_type: application/octet-stream
