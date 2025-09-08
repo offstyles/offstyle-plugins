@@ -179,14 +179,14 @@ jobs:
                 full_hash=$(echo "$line" | cut -d' ' -f1)
                 short_hash=${full_hash:0:7}
                 message=$(echo "$line" | cut -d' ' -f2-)
-                linked_commits="${linked_commits}[$short_hash](https://github.com/${{ github.repository }}/commit/$full_hash) $message"$'\n'
+                linked_commits="${linked_commits}[$short_hash](<https://github.com/${{ github.repository }}/commit/$full_hash>) $message"$'\n'
               fi
             done <<< "$raw_commits"
             
-            release_link="[Release ${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+            release_link="[Release ${{ github.ref_name }}](<https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}>)"
             final_message="$release_link"$'\n\n'"$linked_commits"
           else
-            release_link="[Release ${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+            release_link="[Release ${{ github.ref_name }}](<https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}>)"
             final_message="$release_link"$'\n\n'"Initial release"
           fi
           echo "list<<EOF" >> $GITHUB_OUTPUT
