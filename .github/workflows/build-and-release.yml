@@ -169,17 +169,15 @@ jobs:
           current_tag=${{ github.ref_name }}
           previous_tag=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
           if [ -n "$previous_tag" ]; then
-            # Get commits with full hash and message
-            raw_commits=$(git log --format="%H %s" $previous_tag..$current_tag)
+            # Get commits with full hash, message, and author name
+            raw_commits=$(git log --format="%H|%s|%aN" $previous_tag..$current_tag)
             
             # Convert to markdown links
             linked_commits=""
-            while IFS= read -r line; do
-              if [ -n "$line" ]; then
-                full_hash=$(echo "$line" | cut -d' ' -f1)
+            while IFS='|' read -r full_hash message author_name; do
+              if [ -n "$full_hash" ]; then
                 short_hash=${full_hash:0:7}
-                message=$(echo "$line" | cut -d' ' -f2-)
-                linked_commits="${linked_commits}[$short_hash](<https://github.com/${{ github.repository }}/commit/$full_hash>) $message"$'\n'
+                linked_commits="${linked_commits}[$short_hash](<https://github.com/${{ github.repository }}/commit/$full_hash>) $message @$author_name"$'\n'
               fi
             done <<< "$raw_commits"
             
