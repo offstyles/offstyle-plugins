@@ -169,12 +169,28 @@ jobs:
           current_tag=${{ github.ref_name }}
           previous_tag=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
           if [ -n "$previous_tag" ]; then
-            commits=$(git log --oneline $previous_tag..$current_tag)
+            # Get commits with full hash and message
+            raw_commits=$(git log --format="%H %s" $previous_tag..$current_tag)
+            
+            # Convert to markdown links
+            linked_commits=""
+            while IFS= read -r line; do
+              if [ -n "$line" ]; then
+                full_hash=$(echo "$line" | cut -d' ' -f1)
+                short_hash=${full_hash:0:7}
+                message=$(echo "$line" | cut -d' ' -f2-)
+                linked_commits="${linked_commits}[$short_hash](https://github.com/${{ github.repository }}/commit/$full_hash) $message"$'\n'
+              fi
+            done <<< "$raw_commits"
+            
+            release_link="[Release ${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+            final_message="$release_link"$'\n\n'"$linked_commits"
           else
-            commits="Initial release"
+            release_link="[Release ${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+            final_message="$release_link"$'\n\n'"Initial release"
           fi
           echo "list<<EOF" >> $GITHUB_OUTPUT
-          echo "$commits" >> $GITHUB_OUTPUT
+          echo "$final_message" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Notify Discord
