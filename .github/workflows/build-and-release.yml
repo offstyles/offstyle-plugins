@@ -17,75 +17,170 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    strategy:
+      matrix:
+        sm-version: [ '1.12' ]
+
+    name: "Build for SM ${{ matrix.sm-version }}"
+    if: github.ref_type == 'tag'
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-      
-    - name: Make compile script and compiler executable
-      run: |
-        chmod +x compile.sh
-        chmod +x spcomp spcomp64
-      
-    - name: Compile plugin
-      run: ./compile.sh offstyledb.sp
-      
-    - name: Check if compiled file exists
-      run: |
-        if [ ! -f "./compiled/offstyledb.smx" ]; then
-          echo "Error: Compiled plugin not found!"
-          exit 1
-        fi
-        ls -la compiled/
-      
-    - name: Get tag name
-      id: get_tag
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          echo "tag_name=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
-        else
-          echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        fi
-      
-    - name: Generate changelog
-      id: changelog
-      run: |
-        current_tag=${{ steps.get_tag.outputs.tag_name }}
-        previous_tag=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
-        if [ -n "$previous_tag" ]; then
-          commits=$(git log --oneline $previous_tag..$current_tag)
-          body="Automated release of Offstyle Database plugin
-        
-        ## Changes
-        $commits
-        
-        ## Installation
-        1. Download \`offstyledb.smx\`
-        2. Upload to your SourceMod plugins directory
-        3. Restart your server or use \`sm plugins reload offstyledb\`"
-        else
-          body="Automated release of Offstyle Database plugin
-        
-        ## Changes
-        - Initial release
-        
-        ## Installation
-        1. Download \`offstyledb.smx\`
-        2. Upload to your SourceMod plugins directory
-        3. Restart your server or use \`sm plugins reload offstyledb\`"
-        fi
-        echo "body<<EOF" >> $GITHUB_OUTPUT
-        echo "$body" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-      
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.get_tag.outputs.tag_name }}
-        name: Release ${{ steps.get_tag.outputs.tag_name }}
-        body: ${{ steps.changelog.outputs.body }}
-        files: ./compiled/offstyledb.smx
-        draft: false
-        prerelease: false
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup SP
+        uses: rumblefrog/setup-sp@master
+        with:
+          version: ${{ matrix.sm-version }}
+
+      - name: Download ripext dependency
+        shell: bash
+        run: |
+          # Mac zip just because it's smaller & we don't repack the extensions...
+          wget https://github.com/ErikMinekus/sm-ripext/releases/download/1.3.1/sm-ripext-1.3.1-mac.zip
+          unzip sm-ripext-1.3.1-mac.zip "addons/sourcemod/scripting/include/*"
+
+
+      - name: Run compiler
+        shell: bash
+        run: |
+          cd addons/sourcemod
+          mkdir -p plugins
+          for src in $(find scripting -maxdepth 1 -type f -name "*.sp");
+          do
+            spcomp $src -o=plugins/$(basename $src .sp)'.smx' -i=scripting/include -v2
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: offstyle-database-${{ github.head_ref || github.ref_name }}-sm${{ matrix.sm-version }}
+          path: |
+            addons
+          retention-days: 14
+  
+  release:
+    name: Release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Zip it up
+        shell: bash
+        run: |
+          artifact_dir=$(find * -maxdepth 0 -type d -name "offstyle-database-*" | head -n 1)
+          zip_name="offstyle-database-${{ github.ref_name }}.zip"
+          cd "$artifact_dir"
+          mkdir -p addons
+          mv sourcemod addons/
+          zip -rq "../$zip_name" addons/
+          cd ..
+          echo "zip_file=$zip_name" >> $GITHUB_ENV
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          current_tag=${{ github.ref_name }}
+          previous_tag=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
+          if [ -n "$previous_tag" ]; then
+            commits=$(git log --oneline $previous_tag..$current_tag)
+            body="Automated release of Offstyle Database plugin
+          
+          ## Changes
+          $commits
+          
+          ## Installation
+          1. Download and extract the zip file
+          2. Upload the contents to your server
+          3. Restart your server or reload the plugins
+          
+          ## Files included
+          - Compiled plugins in \`addons/sourcemod/plugins/\`
+          - Source files in \`addons/sourcemod/scripting/\`"
+          else
+            body="Automated release of Offstyle Database plugin
+          
+          ## Changes
+          - Initial release
+          
+          ## Installation
+          1. Download and extract the zip file
+          2. Upload the contents to your server
+          3. Restart your server or reload the plugins
+          
+          ## Files included
+          - Compiled plugins in \`addons/sourcemod/plugins/\`
+          - Source files in \`addons/sourcemod/scripting/\`"
+          fi
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$body" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.body }}
+          artifacts: "*.zip"
+          draft: false
+          prerelease: false
+
+  notify:
+    name: Discord Notification
+    if: github.ref_type == 'tag'
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Discord zip
+        shell: bash
+        run: |
+          artifact_dir=$(find * -maxdepth 0 -type d -name "offstyle-database-*" | head -n 1)
+          zip_name="offstyle-database-${{ github.ref_name }}.zip"
+          cd "$artifact_dir"
+          mkdir -p addons
+          mv sourcemod addons/
+          zip -rq "../$zip_name" addons/
+          cd ..
+          echo "zip_file=$zip_name" >> $GITHUB_ENV
+
+      - name: Get commit list
+        id: commits
+        run: |
+          current_tag=${{ github.ref_name }}
+          previous_tag=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
+          if [ -n "$previous_tag" ]; then
+            commits=$(git log --oneline $previous_tag..$current_tag)
+          else
+            commits="Initial release"
+          fi
+          echo "list<<EOF" >> $GITHUB_OUTPUT
+          echo "$commits" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Notify Discord
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          filename: ${{ env.zip_file }}
+          content: |
+            ${{ steps.commits.outputs.list }}
