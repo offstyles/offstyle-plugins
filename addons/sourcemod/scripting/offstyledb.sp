@@ -521,8 +521,9 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 
     int sDate = GetTime();
 
-    SendRecordWithReplay(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, replaypath);
+    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, replaypath);
 }
+
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
 {
     // oldtime <= time is a filter to prevent non-pbs from being submitted
@@ -567,7 +568,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, isWR);
 }
 
-void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR)
+void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR, const char[] replayPath = "")
 {
     DebugPrint("[OSdb] SendRecord called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s", 
                sMap, sSteamID, sName, time, style, isWR ? "true" : "false");
@@ -592,7 +593,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     HTTPRequest hHTTPRequest;
     JSONObject  hJSON = new JSONObject();
 
-    hHTTPRequest      = new HTTPRequest(API_BASE_URL... "/submit_record");
+    hHTTPRequest      = new HTTPRequest(API_BASE_URL... "/submit_record_nr");
     AddHeaders(hHTTPRequest);
     hJSON.SetString("map", sMap);
     hJSON.SetString("steamid", sSteamID);
@@ -604,109 +605,72 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     hJSON.SetInt("date", sDate);
     hJSON.SetInt("tickrate", gI_Tickrate);
     hJSON.SetInt("style", n_Style);
-    hJSON.SetNull("replayfile");
 
-    // For non-WR submissions, we don't include replay files to avoid race conditions
-    DebugPrint("[OSdb] Non-WR submission, no replay file attached");
+    DataPack pack = new DataPack();
+    pack.WriteString(replayPath);
 
-    hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
+    hHTTPRequest.Post(hJSON, OnRecordSubmitted, pack);
     delete hJSON;
 }
 
-void SendRecordWithReplay(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR, const char[] replayPath)
+void UploadReplay(const char[] replayKey, const char[] replayPath)
 {
-    DebugPrint("[OSdb] SendRecordWithReplay called: Map=%s, SteamID=%s, Name=%s, Time=%.3f, Style=%d, IsWR=%s, ReplayPath=%s", 
-               sMap, sSteamID, sName, time, style, isWR ? "true" : "false", replayPath);
-    
-    if (sv_cheats.BoolValue)
+    if (replayKey[0] == '\0' || replayPath[0] == '\0' || !FileExists(replayPath))
     {
-        LogError("[OSdb] Attempted to submit record with sv_cheats enabled. Record data: %s | %s | %s | %s | %f | %f | %d | %d",
-                 sMap, sSteamID, sName, sDate, time, sync, strafes, jumps);
-        DebugPrint("[OSdb] Record submission blocked due to sv_cheats being enabled");
         return;
     }
 
-    int n_Style = ConvertStyle(style);
-    if (n_Style == -1)
+    DebugPrint("[OSdb] Uploading replay with key: %s, path: %s", replayKey, replayPath);
+    
+    HTTPRequest request = new HTTPRequest(API_BASE_URL... "/upload_replay");
+    AddHeaders(request);
+    request.SetHeader("replay_key", replayKey);
+    
+    DebugPrint("[OSdb] Headers set, calling UploadFile");
+    request.UploadFile(replayPath, OnReplayUploaded, 0);
+}
+
+public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
+{
+    DataPack pack = view_as<DataPack>(value);
+    pack.Reset();
+    char replayPath[PLATFORM_MAX_PATH];
+    pack.ReadString(replayPath, sizeof(replayPath));
+    delete pack;
+
+    if (error[0] != '\0')
     {
-        DebugPrint("[OSdb] Style conversion failed for style %d, aborting record submission", style);
+        LogError("[OSdb] Record submission failed: %s", error);
         return;
     }
 
-    DebugPrint("[OSdb] Style %d converted to %d, preparing HTTP request with replay", style, n_Style);
-
-    HTTPRequest hHTTPRequest;
-    JSONObject  hJSON = new JSONObject();
-
-    hHTTPRequest      = new HTTPRequest(API_BASE_URL... "/submit_record");
-    AddHeaders(hHTTPRequest);
-    hJSON.SetString("map", sMap);
-    hJSON.SetString("steamid", sSteamID);
-    hJSON.SetString("name", sName);
-    hJSON.SetFloat("time", time);
-    hJSON.SetFloat("sync", sync);
-    hJSON.SetInt("strafes", strafes);
-    hJSON.SetInt("jumps", jumps);
-    hJSON.SetInt("date", sDate);
-    hJSON.SetInt("tickrate", gI_Tickrate);
-    hJSON.SetInt("style", n_Style);
-    hJSON.SetNull("replayfile");
-
-    // Use the provided replay file path based on replay mode
-    int replayMode = gCV_ReplayMode.IntValue;
-    bool shouldAttachReplay = false;
-    
-    if (replayMode == -1)
+    if (resp.Status != HTTPStatus_OK && resp.Status != HTTPStatus_Created)
     {
-        // Never attach replays
-        shouldAttachReplay = false;
-        DebugPrint("[OSdb] Replay attachment disabled (mode = -1)");
+        LogError("[OSdb] Record submission failed with status %d", resp.Status);
+        return;
     }
-    else if (replayMode == 0)
+
+    if (resp.Data == null)
     {
-        // Only attach replays for WRs (default behavior)
-        shouldAttachReplay = isWR;
-        DebugPrint("[OSdb] Replay attachment for WRs only (mode = 0), isWR = %s", isWR ? "true" : "false");
+        DebugPrint("[OSdb] Record submitted but no replay key in response");
+        return;
     }
-    else if (replayMode == 1)
+
+    JSONObject data = view_as<JSONObject>(resp.Data);
+    char replayKey[128];
+    if (data.GetString("replay_key", replayKey, sizeof(replayKey)) && replayKey[0] != '\0' && replayPath[0] != '\0')
     {
-        // Attach replays for all times (future feature - currently only WRs have replay paths)
-        shouldAttachReplay = true;
-        DebugPrint("[OSdb] Replay attachment for all times (mode = 1)");
+        DebugPrint("[OSdb] Got replay key from response: %s", replayKey);
+        UploadReplay(replayKey, replayPath);
     }
-    
-    if (FileExists(replayPath) && shouldAttachReplay)
+}
+
+public void OnReplayUploaded(HTTPStatus status, any value)
+{
+    if (status != HTTPStatus_OK)
     {
-        DebugPrint("[OSdb] Reading replay file from provided path: %s", replayPath);
-        File fFile = OpenFile(replayPath, "rb");
-
-        if (fFile != null && fFile.Seek(0, SEEK_END))
-        {
-            int iSize = fFile.Position;
-            fFile.Seek(0, SEEK_SET);
-
-            char[] sFileContents = new char[iSize + 1];
-            fFile.ReadString(sFileContents, iSize + 1, iSize);
-            delete fFile;
-
-            char[] sFileContentsEncoded = new char[iSize * 2];
-            Crypt_Base64Encode(sFileContents, sFileContentsEncoded, iSize * 2, iSize);
-
-            hJSON.SetString("replayfile", sFileContentsEncoded);
-            DebugPrint("[OSdb] Replay file successfully encoded and attached");
-        }
-        else {
-            delete fFile;
-            DebugPrint("[OSdb] Failed to read replay file from path: %s", replayPath);
-        }
+        LogError("[OSdb] Replay upload failed with status %d", status);
     }
-    else {
-        DebugPrint("[OSdb] Replay not attached: file_exists=%s, should_attach=%s, replay_mode=%d", 
-                  FileExists(replayPath) ? "true" : "false", shouldAttachReplay ? "true" : "false", replayMode);
-    }
-
-    hHTTPRequest.Post(hJSON, OnHttpDummyCallback);
-    delete hJSON;
 }
 
 void ProcessNextBatch()
@@ -796,16 +760,6 @@ void FinishBatchProcessing()
     gS_BulkCode[0] = '\0';
     
     PrintToServer("[osdb] Batch processing completed.");
-}
-
-void OnHttpDummyCallback(HTTPResponse resp, any value)
-{
-    if (resp.Status != HTTPStatus_OK)
-    {
-        return;
-    }
-
-    return;
 }
 
 void RequestBulkVerification()
