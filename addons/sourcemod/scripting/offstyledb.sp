@@ -497,6 +497,9 @@ public Action Command_RefreshMapping(int client, int args)
 // Handle WR submissions with replay files - fires after replay is saved
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
 {
+    if(client == 0) {
+        return;
+    }
     if (track != 0 || gI_TimerVersion != TimerVersion_shavit || !isbestreplay || Shavit_IsPracticeMode(client) || Shavit_IsPaused(client) || !IsClientInGame(client) || IsFakeClient(client)) {
         return;
     }
