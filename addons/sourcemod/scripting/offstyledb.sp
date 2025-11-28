@@ -51,7 +51,7 @@ ConVar    sv_cheats          = null;
 StringMap gM_StyleMapping    = null;
 char      gS_StyleHash[160];
 
-char      gS_BulkCode[64];
+char      gS_BulkCode[128];
 bool      gB_IsProcessingBatches = false;
 int       gI_CurrentBatch = 0;
 int       gI_TotalRecords = 0;
