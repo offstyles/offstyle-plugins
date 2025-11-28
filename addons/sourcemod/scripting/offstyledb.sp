@@ -678,6 +678,10 @@ public void OnReplayUploaded(HTTPStatus status, any value)
 
 void ProcessNextBatch()
 {
+    DebugPrint("[OSdb] ProcessNextBatch called - gB_IsProcessingBatches: %s, gS_BulkCode length: %d", 
+               gB_IsProcessingBatches ? "true" : "false", strlen(gS_BulkCode));
+    DebugPrint("[OSdb] Current bulk code value: %s", gS_BulkCode);
+    
     if (gA_AllRecords == null || gA_AllRecords.Length == 0)
     {
         PrintToServer("[osdb] No more records to process, finishing batch operation.");
@@ -711,7 +715,10 @@ void ProcessNextBatch()
         hArray.Push(hJSON);
     }
     
+    DebugPrint("[OSdb] Created JSON array with %d records", hArray.Length);
+    
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_records");
+    DebugPrint("[OSdb] Created HTTP request to %s/bulk_records", API_BASE_URL);
     AddHeaders(hHTTPRequest);
     
     JSONObject hRecordsList = new JSONObject();
@@ -721,6 +728,7 @@ void ProcessNextBatch()
     pack.WriteCell(gI_CurrentBatch);
     pack.WriteCell(hArray.Length);
     
+    DebugPrint("[OSdb] Sending batch %d with %d records", gI_CurrentBatch + 1, hArray.Length);
     hHTTPRequest.Post(hRecordsList, Callback_OnBatchSent, pack);
     
     delete hRecordsList;
@@ -734,15 +742,41 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
     int batchSize = pack.ReadCell();
     delete pack;
     
+    DebugPrint("[OSdb] Callback_OnBatchSent received - Status: %d", resp.Status);
+    
     if (resp.Status != HTTPStatus_OK)
     {
         LogError("[osdb] Batch %d failed to send: status = %d", batchNumber + 1, resp.Status);
+        DebugPrint("[OSdb] Batch %d failed with HTTP status %d", batchNumber + 1, resp.Status);
+        
+        // Try to extract error message from response
+        if (resp.Data != null)
+        {
+            JSONObject errorData = view_as<JSONObject>(resp.Data);
+            char errorMsg[256];
+            if (errorData.GetString("error", errorMsg, sizeof(errorMsg)))
+            {
+                DebugPrint("[OSdb] Server error message: %s", errorMsg);
+                LogError("[osdb] Server error: %s", errorMsg);
+            }
+            if (errorData.GetString("message", errorMsg, sizeof(errorMsg)))
+            {
+                DebugPrint("[OSdb] Server message: %s", errorMsg);
+                LogError("[osdb] Server message: %s", errorMsg);
+            }
+        }
+        else
+        {
+            DebugPrint("[OSdb] No response data available");
+        }
+        
         PrintToServer("[osdb] Batch %d failed, stopping batch processing.", batchNumber + 1);
         FinishBatchProcessing();
         return;
     }
     
     PrintToServer("[osdb] Batch %d (%d records) sent successfully.", batchNumber + 1, batchSize);
+    DebugPrint("[OSdb] Batch %d completed successfully", batchNumber + 1);
     
     gI_CurrentBatch++;
     ProcessNextBatch();
@@ -750,18 +784,22 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
 
 void FinishBatchProcessing()
 {
+    DebugPrint("[OSdb] FinishBatchProcessing called - clearing bulk code: %s", gS_BulkCode);
+    
     gB_IsProcessingBatches = false;
     gI_CurrentBatch = 0;
     gI_TotalRecords = 0;
     
     if (gA_AllRecords != null)
     {
+        DebugPrint("[OSdb] Cleaning up %d records from ArrayList", gA_AllRecords.Length);
         delete gA_AllRecords;
         gA_AllRecords = null;
     }
     
     gS_BulkCode[0] = '\0';
     
+    DebugPrint("[OSdb] Batch processing state reset complete");
     PrintToServer("[osdb] Batch processing completed.");
 }
 
@@ -998,6 +1036,7 @@ void AddHeaders(HTTPRequest req)
     
     if (gB_IsProcessingBatches && strlen(gS_BulkCode) > 0)
     {
+        DebugPrint("[OSdb] Adding bulk_verify header: %s", gS_BulkCode);
         req.SetHeader("bulk_verify", gS_BulkCode);
     }
 }
