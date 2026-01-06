@@ -13,7 +13,7 @@
 native float Shavit_GetWorldRecord(int style, int track);
 native bool  Shavit_IsPracticeMode(int client);
 native bool  Shavit_IsPaused(int client);
-forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
+forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name);
 forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
 
@@ -495,7 +495,7 @@ public Action Command_RefreshMapping(int client, int args)
 }
 
 // Handle WR submissions with replay files - fires after replay is saved
-public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
+public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
 {
     if(client == 0) {
         return;
@@ -524,7 +524,9 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 
     int sDate = GetTime();
 
-    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, replaypath);
+    char sReplayPath[128];
+    replaypaths.GetString(0, sReplayPath, sizeof(sReplayPath));
+    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, sReplayPath);
 }
 
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
