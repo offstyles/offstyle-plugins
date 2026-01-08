@@ -3,8 +3,13 @@
 #include <keyvalues>
 #include <ripext>
 #include <sha1>
+#include <shavit>
+#include <shavit/core>
+#include <shavit/replay-recorder>
 
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
+
+#undef REQUIRE_PLUGIN
 
 #pragma dynamic 104857600
 #pragma newdecls required
@@ -87,6 +92,12 @@ public Plugin myinfo =
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
     MarkNativeAsOptional("Shavit_GetWorldRecord");
+    MarkNativeAsOptional("Shavit_OnReplaySaved");
+    MarkNativeAsOptional("OnTimerFinished_Post");
+    MarkNativeAsOptional("Shavit_OnFinish");
+    MarkNativeAsOptional("Shavit_IsPracticeMode");
+    MarkNativeAsOptional("Shavit_IsPaused");
+
     return APLRes_Success;
 }
 
