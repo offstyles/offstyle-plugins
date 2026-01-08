@@ -15,13 +15,6 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-native float Shavit_GetWorldRecord(int style, int track);
-native bool  Shavit_IsPracticeMode(int client);
-native bool  Shavit_IsPaused(int client);
-forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name);
-forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
-forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
-
 enum
 {
     TimerVersion_Unknown,
@@ -85,7 +78,7 @@ public Plugin myinfo =
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-    version     = "0.0.4",
+    version     = "0.1.0",
     url         = ""
 };
 
@@ -103,6 +96,15 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
+    if (SHAVIT_VERSION_MAJOR < 4) {
+        // DebugPrint("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
+        SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
+    } else if (SHAVIT_VERSION_MAJOR >= 5) {
+        // probably needless but future proofing is nice ig
+        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+        // SetFailState("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+    }
+
     RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs);
     RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
