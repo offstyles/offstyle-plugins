@@ -986,54 +986,6 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     return hJSON;
 }
 
-// stocks from shavit.inc
-// connects synchronously to the bhoptimer database
-// calls errors if needed
-Database GetTimerDatabaseHandle()
-{
-    Database db = null;
-    char     sError[255];
-
-    if (SQL_CheckConfig("shavit"))
-    {
-        if ((db = SQL_Connect("shavit", true, sError, sizeof(sError))) == null)
-        {
-            SetFailState("[OSdb] OSdb plugin startup failed. Reason: %s", sError);
-        }
-    }
-    else
-    {
-        db = SQLite_UseDatabase("shavit", sError, sizeof(sError));
-    }
-
-    return db;
-}
-
-// retrieves the table prefix defined in configs/shavit-prefix.txt
-void GetTimerSQLPrefix(char[] buffer, int maxlen)
-{
-    char sFile[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, sFile, sizeof(sFile), "configs/shavit-prefix.txt");
-
-    File fFile = OpenFile(sFile, "r");
-
-    if (fFile == null)
-    {
-        delete fFile;
-        SetFailState("[OSdb] Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
-    }
-
-    char sLine[PLATFORM_MAX_PATH * 2];
-
-    if (fFile.ReadLine(sLine, sizeof(sLine)))
-    {
-        TrimString(sLine);
-        strcopy(buffer, maxlen, sLine);
-    }
-
-    delete fFile;
-}
-
 void AddHeaders(HTTPRequest req)
 {
     char sPublicIP[32];
