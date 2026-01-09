@@ -73,6 +73,21 @@ void DebugPrint(const char[] format, any ...)
     PrintToServer("[OSdb Debug] %s", buffer);
 }
 
+int GetShavitMajorVersion() {
+    char sBuffer[128];
+
+    Handle hCvar = FindConVar("shavit_version");
+    if (h != null) {
+        GetConVarString(hCvar, sBuffer, sizeof(sBuffer));
+        int major = StringToInt(sBuffer[0]);
+
+        return major;
+    }
+
+    DebugPrint("shavit_version cvar not found (returned null?)");
+    return -1;
+}
+
 public Plugin myinfo =
 {
     name        = "Offstyle Database",
@@ -96,10 +111,11 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
-    if (SHAVIT_VERSION_MAJOR < 4) {
+    int smv = GetShavitMajorVersion();
+    if (smv < 4) {
         // DebugPrint("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
         SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
-    } else if (SHAVIT_VERSION_MAJOR >= 5) {
+    } else if (smv >= 5) {
         // probably needless but future proofing is nice ig
         DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
         // SetFailState("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
