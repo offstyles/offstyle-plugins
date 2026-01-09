@@ -10,6 +10,9 @@
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
 #undef REQUIRE_PLUGIN
+#include <shavit*>
+
+#define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
 #pragma dynamic 104857600
 #pragma newdecls required
