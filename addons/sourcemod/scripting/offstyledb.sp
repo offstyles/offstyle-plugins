@@ -3,11 +3,6 @@
 #include <keyvalues>
 #include <ripext>
 #include <sha1>
-#include <shavit>
-#include <shavit/core>
-#include <shavit/replay-recorder>
-
-#define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
 #undef REQUIRE_PLUGIN
 #include <shavit*>
