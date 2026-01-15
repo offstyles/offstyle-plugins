@@ -4,18 +4,14 @@
 #include <ripext>
 #include <sha1>
 
+#undef REQUIRE_PLUGIN
+#include <shavit*>
+
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
 #pragma dynamic 104857600
 #pragma newdecls required
 #pragma semicolon 1
-
-native float Shavit_GetWorldRecord(int style, int track);
-native bool  Shavit_IsPracticeMode(int client);
-native bool  Shavit_IsPaused(int client);
-forward void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
-forward void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
-forward void OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
 
 enum
 {
@@ -75,23 +71,54 @@ void DebugPrint(const char[] format, any ...)
     PrintToServer("[OSdb Debug] %s", buffer);
 }
 
+int GetShavitMajorVersion() {
+    char sBuffer[128];
+
+    Handle hCvar = FindConVar("shavit_version");
+    if (h != null) {
+        GetConVarString(hCvar, sBuffer, sizeof(sBuffer));
+        int major = StringToInt(sBuffer[0]);
+
+        return major;
+    }
+
+    DebugPrint("shavit_version cvar not found (returned null?)");
+    return -1;
+}
+
 public Plugin myinfo =
 {
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-    version     = "0.0.4",
+    version     = "0.1.0",
     url         = ""
 };
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
     MarkNativeAsOptional("Shavit_GetWorldRecord");
+    MarkNativeAsOptional("Shavit_OnReplaySaved");
+    MarkNativeAsOptional("OnTimerFinished_Post");
+    MarkNativeAsOptional("Shavit_OnFinish");
+    MarkNativeAsOptional("Shavit_IsPracticeMode");
+    MarkNativeAsOptional("Shavit_IsPaused");
+
     return APLRes_Success;
 }
 
 public void OnPluginStart()
 {
+    int smv = GetShavitMajorVersion();
+    if (smv < 4) {
+        // DebugPrint("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
+        SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
+    } else if (smv >= 5) {
+        // probably needless but future proofing is nice ig
+        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+        // SetFailState("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+    }
+
     RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs);
     RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
     RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
@@ -495,7 +522,7 @@ public Action Command_RefreshMapping(int client, int args)
 }
 
 // Handle WR submissions with replay files - fires after replay is saved
-public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
+public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
 {
     if(client == 0) {
         return;
@@ -524,7 +551,9 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 
     int sDate = GetTime();
 
-    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, replaypath);
+    char sReplayPath[128];
+    replaypaths.GetString(0, sReplayPath, sizeof(sReplayPath));
+    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, true, sReplayPath);
 }
 
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
@@ -971,54 +1000,6 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     hJSON.SetInt("style", ConvertStyle(results.FetchInt(8)));
 
     return hJSON;
-}
-
-// stocks from shavit.inc
-// connects synchronously to the bhoptimer database
-// calls errors if needed
-Database GetTimerDatabaseHandle()
-{
-    Database db = null;
-    char     sError[255];
-
-    if (SQL_CheckConfig("shavit"))
-    {
-        if ((db = SQL_Connect("shavit", true, sError, sizeof(sError))) == null)
-        {
-            SetFailState("[OSdb] OSdb plugin startup failed. Reason: %s", sError);
-        }
-    }
-    else
-    {
-        db = SQLite_UseDatabase("shavit", sError, sizeof(sError));
-    }
-
-    return db;
-}
-
-// retrieves the table prefix defined in configs/shavit-prefix.txt
-void GetTimerSQLPrefix(char[] buffer, int maxlen)
-{
-    char sFile[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, sFile, sizeof(sFile), "configs/shavit-prefix.txt");
-
-    File fFile = OpenFile(sFile, "r");
-
-    if (fFile == null)
-    {
-        delete fFile;
-        SetFailState("[OSdb] Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
-    }
-
-    char sLine[PLATFORM_MAX_PATH * 2];
-
-    if (fFile.ReadLine(sLine, sizeof(sLine)))
-    {
-        TrimString(sLine);
-        strcopy(buffer, maxlen, sLine);
-    }
-
-    delete fFile;
 }
 
 void AddHeaders(HTTPRequest req)
