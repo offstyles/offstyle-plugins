@@ -80,7 +80,7 @@ public Plugin myinfo =
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-    version     = "0.0.4",
+    version     = "0.3.0",
     url         = ""
 };
 
