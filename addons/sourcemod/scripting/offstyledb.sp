@@ -639,7 +639,10 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     hJSON.SetInt("style", n_Style);
 
     DataPack pack = new DataPack();
-    pack.WriteString(replayPath);
+    if (gCV_ReplayMode != -1) {
+        pack.WriteString(replayPath);
+    }
+    
 
     hHTTPRequest.Post(hJSON, OnRecordSubmitted, pack);
     delete hJSON;
