@@ -639,6 +639,12 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 {
     DataPack pack = view_as<DataPack>(value);
     pack.Reset();
+
+    if (gCV_ReplayMode.IntValue == -1) {
+        delete pack;
+        return;
+    }
+
     char replayPath[PLATFORM_MAX_PATH];
     pack.ReadString(replayPath, sizeof(replayPath));
     delete pack;
