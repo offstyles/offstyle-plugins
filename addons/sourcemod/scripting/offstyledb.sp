@@ -610,7 +610,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     hJSON.SetInt("style", n_Style);
 
     DataPack pack = new DataPack();
-    if (gCV_ReplayMode != -1) {
+    if (gCV_ReplayMode.IntValue != -1) {
         pack.WriteString(replayPath);
     }
 
