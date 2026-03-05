@@ -102,6 +102,7 @@ public void OnPluginStart()
 {
     int smv = GetShavitMajorVersion();
     if (smv < 4) {
+PrintToServer("[OSdb] smv = %d", smv);
         // DebugPrint("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
         SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 version here https://github.com/offstyles/offstyle-plugins/tree/v3");
     } else if (smv >= 5) {
@@ -549,17 +550,27 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
 {
+DebugPrint("[OSdb] oldtime = %f newtime = %f", oldtime, time);
     // oldtime <= time is a filter to prevent non-pbs from being submitted
     // also means times wont submit if they never beat ur pb, like in the case
     // of a skip being removed, but thats up the to server to delete the time
-    if (track != 0 || gI_TimerVersion != TimerVersion_shavit || (oldtime != 0.0 && oldtime <= time) || Shavit_IsPracticeMode(client) || Shavit_IsPaused(client) || !IsClientInGame(client) || IsFakeClient(client))
+    if (track != 0 
+|| gI_TimerVersion != TimerVersion_shavit 
+        || oldtime <= time
+|| Shavit_IsPracticeMode(client) 
+|| Shavit_IsPaused(client) 
+|| !IsClientInGame(client) 
+|| IsFakeClient(client)
+)
     {
         // skipping record
         return;
     }
 
     bool isWR;
-    if (time > Shavit_GetWorldRecord(style, track))
+    float fWR = Shavit_GetWorldRecord(style, track);
+    // if the wr is 0 then the time IS the new wr
+    if (fWR != 0.0 && time > fWR)
     {
         isWR = false;
         
