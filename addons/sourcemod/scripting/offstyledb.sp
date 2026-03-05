@@ -80,7 +80,7 @@ public Plugin myinfo =
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-    version     = "0.3.0",
+    version     = "3.0.2",
     url         = ""
 };
 
@@ -532,14 +532,23 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     // oldtime <= time is a filter to prevent non-pbs from being submitted
     // also means times wont submit if they never beat ur pb, like in the case
     // of a skip being removed, but thats up the to server to delete the time
-    if (track != 0 || gI_TimerVersion != TimerVersion_shavit || (oldtime != 0.0 && oldtime <= time) || Shavit_IsPracticeMode(client) || Shavit_IsPaused(client) || !IsClientInGame(client) || IsFakeClient(client))
+    if (
+        track != 0 
+        || gI_TimerVersion != TimerVersion_shavit 
+        || oldtime <= time
+        || Shavit_IsPracticeMode(client) 
+        || Shavit_IsPaused(client) 
+        || !IsClientInGame(client) 
+        || IsFakeClient(client)
+    )
     {
         // skipping record
         return;
     }
 
     bool isWR;
-    if (time > Shavit_GetWorldRecord(style, track))
+    float fWR = Shavit_GetWorldRecord(style, track);
+    if (fWR != 0.0 && time > fWR)
     {
         isWR = false;
         
