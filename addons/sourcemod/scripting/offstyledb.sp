@@ -91,7 +91,7 @@ public Plugin myinfo =
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-    version     = "0.4.0",
+    version     = "4.0.0",
     url         = ""
 };
 
@@ -639,7 +639,7 @@ void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float tim
     hJSON.SetInt("style", n_Style);
 
     DataPack pack = new DataPack();
-    if (gCV_ReplayMode != -1) {
+    if (gCV_ReplayMode.IntValue != -1) {
         pack.WriteString(replayPath);
     }
     
@@ -669,6 +669,12 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 {
     DataPack pack = view_as<DataPack>(value);
     pack.Reset();
+
+    if (gCV_ReplayMode.IntValue == -1) {
+        delete pack;
+        return;
+    }
+
     char replayPath[PLATFORM_MAX_PATH];
     pack.ReadString(replayPath, sizeof(replayPath));
     delete pack;
