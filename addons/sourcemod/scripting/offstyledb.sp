@@ -5,7 +5,7 @@
 #include <sha1>
 
 #undef REQUIRE_PLUGIN
-#include <shavit*>
+#include <shavit>
 
 #define API_BASE_URL "https://offstyles.tommyy.dev/api"
 
