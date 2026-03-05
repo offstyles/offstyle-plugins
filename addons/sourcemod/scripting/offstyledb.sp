@@ -75,7 +75,7 @@ int GetShavitMajorVersion() {
     char sBuffer[128];
 
     Handle hCvar = FindConVar("shavit_version");
-    if (h != null) {
+    if (hCvar != null) {
         GetConVarString(hCvar, sBuffer, sizeof(sBuffer));
         int major = StringToInt(sBuffer[0]);
 
