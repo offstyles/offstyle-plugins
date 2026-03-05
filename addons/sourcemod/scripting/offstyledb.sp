@@ -72,19 +72,10 @@ void DebugPrint(const char[] format, any ...)
 }
 
 int GetShavitMajorVersion() {
-    char sBuffer[128];
-
-    Handle hCvar = FindConVar("shavit_version");
-    if (hCvar != null) {
-        GetConVarString(hCvar, sBuffer, sizeof(sBuffer));
-        int major = StringToInt(sBuffer[0]);
+            int major = SHAVIT_VERSION_MAJOR;
 
         return major;
     }
-
-    DebugPrint("shavit_version cvar not found (returned null?)");
-    return -1;
-}
 
 public Plugin myinfo =
 {
