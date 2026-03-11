@@ -669,10 +669,13 @@ void UploadReplay(const char[] replayKey, const char[] replayPath)
 
 public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 {
+    DebugPrint("[OSdb] OnRecordSubmitted callback fired");
+    
     DataPack pack = view_as<DataPack>(value);
     pack.Reset();
 
     if (gCV_ReplayMode.IntValue == -1) {
+        DebugPrint("[OSdb] Replay mode is -1, skipping replay upload");
         delete pack;
         return;
     }
@@ -680,6 +683,8 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
     char replayPath[PLATFORM_MAX_PATH];
     pack.ReadString(replayPath, sizeof(replayPath));
     delete pack;
+    
+    DebugPrint("[OSdb] Replay mode = %d, replayPath = '%s'", gCV_ReplayMode.IntValue, replayPath);
 
     if (error[0] != '\0')
     {
@@ -687,6 +692,8 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
         return;
     }
 
+    DebugPrint("[OSdb] HTTP response status: %d", resp.Status);
+    
     if (resp.Status != HTTPStatus_OK && resp.Status != HTTPStatus_Created)
     {
         LogError("[OSdb] Record submission failed with status %d", resp.Status);
@@ -695,16 +702,25 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 
     if (resp.Data == null)
     {
-        DebugPrint("[OSdb] Record submitted but no replay key in response");
+        DebugPrint("[OSdb] Record submitted but resp.Data is null, no replay key in response");
         return;
     }
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     char replayKey[128];
-    if (data.GetString("replay_key", replayKey, sizeof(replayKey)) && replayKey[0] != '\0' && replayPath[0] != '\0')
+    bool hasReplayKey = data.GetString("replay_key", replayKey, sizeof(replayKey));
+    
+    DebugPrint("[OSdb] Has replay_key in response: %s, value: '%s', replayPath: '%s'", 
+               hasReplayKey ? "true" : "false", replayKey, replayPath);
+    
+    if (hasReplayKey && replayKey[0] != '\0' && replayPath[0] != '\0')
     {
-        DebugPrint("[OSdb] Got replay key from response: %s", replayKey);
+        DebugPrint("[OSdb] Got replay key from response: %s, calling UploadReplay", replayKey);
         UploadReplay(replayKey, replayPath);
+    }
+    else {
+        DebugPrint("[OSdb] Skipping replay upload - replayKey empty: %d, replayPath empty: %d", 
+                   replayKey[0] == '\0', replayPath[0] == '\0');
     }
 }
 
