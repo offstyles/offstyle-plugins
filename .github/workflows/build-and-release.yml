@@ -41,6 +41,14 @@ jobs:
           wget https://github.com/ErikMinekus/sm-ripext/releases/download/1.3.1/sm-ripext-1.3.1-mac.zip
           unzip sm-ripext-1.3.1-mac.zip "addons/sourcemod/scripting/include/*"
 
+      - name: Download shavit includes
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/shavitush/bhoptimer.git /tmp/bhoptimer
+          mkdir -p addons/sourcemod/scripting/include
+          cp -r /tmp/bhoptimer/addons/sourcemod/scripting/include/* addons/sourcemod/scripting/include/
+          rm -rf /tmp/bhoptimer
+
 
       - name: Run compiler
         shell: bash
