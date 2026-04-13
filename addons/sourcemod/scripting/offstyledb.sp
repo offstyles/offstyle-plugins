@@ -7,7 +7,7 @@
 #undef REQUIRE_PLUGIN
 #include <shavit>
 
-#define API_BASE_URL "https://offstyles.tommyy.dev/api"
+#define API_BASE_URL "https://offstyles.net/api"
 
 #pragma dynamic 104857600
 #pragma newdecls required
