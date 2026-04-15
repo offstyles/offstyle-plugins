@@ -20,9 +20,9 @@ Before adding the plugin you obviously need a CSS server setup and running the f
 
 Head to [the releases page](https://github.com/offstyles/offstyle-plugins/releases) and download the correct version for your bhoptimer install
 
-   To check bhoptimer version quickly, type `sm plugins` in the server console while connected and look for plugins with [shavit] infront of their names, the version of these plugins is the bhoptimer version
+   To check bhoptimer version quickly, type `sm plugins` in the console while connected to the server and look for plugins with [shavit] infront of their names, the version of these plugins is the bhoptimer version
    - `v3.x.x` -> download the **v3** plugin
-   - `v4.x.x` -> donwload the **v4** plugin
+   - `v4.x.x` -> download the **v4** plugin
 
 
 #### 2. Open server files
