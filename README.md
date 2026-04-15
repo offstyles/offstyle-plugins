@@ -31,7 +31,7 @@ Head to [the releases page](https://github.com/offstyles/offstyle-plugins/releas
 
 #### 3. Unzip & Drag folder
 
-  Unzip the plugin.zip file you downloaded, drag the `addons` folder from it into the `cstrike` folder in the servers directory, it may ask you to replace things, hit yes (this shouldnt cause any issues)
+  Unzip the `offstyle-database-vX.X.X.zip` file you downloaded, drag the `addons` folder from it into the `cstrike` folder in the servers directory, it may ask you to replace things, hit yes (this shouldnt cause any issues)
 
 #### 4. Restart server & Update Config
 
