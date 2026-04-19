@@ -36,11 +36,6 @@ bool IsSubmittableFinish(int client, int track)
         && !Shavit_IsPaused(client);
 }
 
-// Decision matrix applied in OnFinish:
-//   replay_mode=-1  -> submit everything from OnFinish, no replay
-//   replay_mode= 0  -> WRs wait for canonical OnReplaySaved; non-WRs submit inline
-//   replay_mode= 1  -> WRs and non-WRs both wait for OnReplaySaved
-// Universal filter: submit_mode=0 drops non-WRs.
 void Records_HandleFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime)
 {
     gPending[client].pending = false;
@@ -60,24 +55,31 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
         return;
     }
 
-    float fWR        = Shavit_GetWorldRecord(style, track);
-    bool  isWR       = (fWR == 0.0 || time <= fWR);
-    int   replayMode = gCV_ReplayMode.IntValue;
-    int   submitMode = gCV_SubmitMode.IntValue;
+    float fWR  = Shavit_GetWorldRecord(style, track);
+    bool  isWR = (fWR == 0.0 || time <= fWR);
 
-    if (!isWR && submitMode == 0)
+    if (!isWR && gCV_SubmitMode.IntValue == 0)
     {
-        DebugPrint("[OSdb] Skipping non-WR submission (submit_mode=0)");
+        DebugPrint("[OSdb] Skipping non-WR (submit_mode=0)");
         return;
     }
 
-    bool waitForReplay = false;
-    if (replayMode != -1)
+    // Decide whether to attach a replay:
+    //   replay_mode=-1  -> no replay, dispatch now
+    //   replay_mode= 0  -> replay only for WRs; non-WRs dispatch now
+    //   replay_mode= 1  -> replay for everything, always wait for OnReplaySaved
+    bool waitForReplay;
+    if (gCV_ReplayMode.IntValue == -1)
     {
-        if (isWR || replayMode == 1)
-        {
-            waitForReplay = true;
-        }
+        waitForReplay = false;
+    }
+    else if (gCV_ReplayMode.IntValue == 0)
+    {
+        waitForReplay = isWR;
+    }
+    else    // replay_mode == 1
+    {
+        waitForReplay = true;
     }
 
     SubmissionIntent intent;
@@ -90,7 +92,7 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
     }
 
     gPending[client] = intent;
-    DebugPrint("[OSdb] Stashed intent for client %d (isWR=%d, replay_mode=%d)", client, isWR, replayMode);
+    DebugPrint("[OSdb] Stashed intent for client %d (isWR=%d)", client, isWR);
 }
 
 // Fills an intent from the shavit-finish params and the client's current identity.
@@ -112,26 +114,28 @@ void BuildIntent(int client, int style, float time, float sync, int strafes, int
 
 // Called from the compat layer's pre-replay-save hook. Returns true if shavit
 // should save a replay we'll pick up later. If shavit refuses to save
-// (istoolong) we dispatch the stashed intent now without a replay.
+// (istoolong), OnReplaySaved won't fire either, so we dispatch the stashed
+// intent now without a replay - this applies to WR intents as well, not just
+// non-WR copies.
 bool Records_ShouldSaveReplay(int client, bool isbestreplay, bool istoolong)
 {
-    // Canonical WR saves happen regardless of what we do here.
-    if (isbestreplay)
-    {
-        return false;
-    }
-
-    // We only ask for copy saves when a non-WR intent is stashed.
-    if (!gPending[client].pending || gPending[client].isWR)
+    if (!gPending[client].pending)
     {
         return false;
     }
 
     if (istoolong)
     {
-        DebugPrint("[OSdb] Non-WR replay too long, submitting without replay");
+        DebugPrint("[OSdb] Replay too long (isWR=%d), submitting without replay", gPending[client].isWR);
         DispatchSubmission(gPending[client], "");
         gPending[client].pending = false;
+        return false;
+    }
+
+    // Canonical WR saves are shavit's responsibility - we don't need to ask
+    // for an extra copy.
+    if (isbestreplay || gPending[client].isWR)
+    {
         return false;
     }
 
@@ -183,11 +187,6 @@ void Records_HandleReplaySaved(int client, bool isbestreplay, const char[] repla
     gPending[client].pending = false;
 }
 
-public void OnClientDisconnect(int client)
-{
-    gPending[client].pending = false;
-}
-
 // POSTs the finalized submission to /submit_record_nr. On success, the callback
 // may chain a replay upload.
 void DispatchSubmission(SubmissionIntent intent, const char[] replayPath)
@@ -207,7 +206,8 @@ void DispatchSubmission(SubmissionIntent intent, const char[] replayPath)
     int mappedStyle = ConvertStyle(intent.rawStyle);
     if (mappedStyle == -1)
     {
-        DebugPrint("[OSdb] Style conversion failed for raw=%d, dropping submission", intent.rawStyle);
+        LogError("[OSdb] Style %d has no remote mapping - submission dropped for %s on %s (time=%f). Check the style mapping on the API server.",
+                 intent.rawStyle, intent.steamId, intent.map, intent.time);
         CleanupTempReplay(replayPath);
         return;
     }
