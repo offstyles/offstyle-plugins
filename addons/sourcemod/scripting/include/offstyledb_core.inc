@@ -786,6 +786,14 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
         return;
     }
 
+    // Replays disabled: OnFinish submits everything, ignore this forward entirely
+    // so shavit not firing it (e.g. replay saving disabled server-side) never
+    // swallows a time.
+    if (gCV_ReplayMode.IntValue == -1)
+    {
+        return;
+    }
+
     float fWR = Shavit_GetWorldRecord(style, track);
     bool  isWR = (fWR == 0.0 || time <= fWR);
 
@@ -865,19 +873,21 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     float fWR = Shavit_GetWorldRecord(style, track);
     bool  isWR = (fWR == 0.0 || time <= fWR);
 
-    if (isWR)
+    if (isWR && gCV_ReplayMode.IntValue != -1)
     {
-        // WRs are handled by Shavit_OnReplaySaved with the correct replay file
+        // WRs are handled by Shavit_OnReplaySaved with the correct replay file.
+        // When replays are disabled we submit here instead, since OnReplaySaved
+        // may not fire at all.
         return;
     }
 
-    if (gCV_SubmitMode.IntValue == 0)
+    if (!isWR && gCV_SubmitMode.IntValue == 0)
     {
         DebugPrint("[OSdb] Skipping non-WR submission due to submit mode = 0 (WRs only)");
         return;
     }
 
-    if (gCV_ReplayMode.IntValue == 1)
+    if (!isWR && gCV_ReplayMode.IntValue == 1)
     {
         // Non-WR with replay attachment: submitted from Shavit_OnReplaySaved so the replay is attached
         DebugPrint("[OSdb] Deferring non-WR submit to OnReplaySaved (replay_mode=1)");
