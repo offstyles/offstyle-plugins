@@ -11,9 +11,6 @@
 native float  Shavit_GetWorldRecord(int style, int track);
 native bool   Shavit_IsPracticeMode(int client);
 native bool   Shavit_IsPaused(int client);
-// v4-only native. Declared here so the build-mismatch detector can probe its
-// availability via GetFeatureStatus. Never actually called from the v3 build.
-native void   Shavit_AlsoSaveReplayTo(const char[] path);
 forward void   Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void   Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong);
@@ -140,14 +137,11 @@ void ShavitCompat_MarkOptionalNatives()
     MarkNativeAsOptional("Shavit_OnFinish");
     MarkNativeAsOptional("Shavit_IsPracticeMode");
     MarkNativeAsOptional("Shavit_IsPaused");
-    // Shavit_AlsoSaveReplayTo is v4-only. Marked optional in both builds so
-    // the v3 build can probe its availability for build-mismatch detection
-    // without the plugin refusing to load when the native is absent.
-    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
 #if defined SHAVIT_V3
     MarkNativeAsOptional("Shavit_ShouldSaveReplayCopy");
 #else
     MarkNativeAsOptional("Shavit_AddAdditionalReplayPathsHere");
+    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
 #endif
 }
 
@@ -170,14 +164,43 @@ int ShavitCompat_BuildVersion()
 }
 
 // Runtime detection of the shavit major version actually loaded on the server.
-// Keyed on Shavit_AlsoSaveReplayTo, which is a v4-only native.
+// Iterates the loaded plugins and reads the version string of the first one
+// whose name contains "shavit". Submodules share the core major version so any
+// match is fine. Falls back to the build version if no shavit plugin is
+// detectable, to avoid triggering a spurious mismatch.
 int ShavitCompat_DetectRunningVersion()
 {
-    if (GetFeatureStatus(FeatureType_Native, "Shavit_AlsoSaveReplayTo") == FeatureStatus_Available)
+    Handle iter   = GetPluginIterator();
+    int    result = 0;
+
+    while (MorePlugins(iter))
     {
-        return 4;
+        Handle plugin = ReadPlugin(iter);
+        char   pname[128];
+        GetPluginInfo(plugin, PlInfo_Name, pname, sizeof(pname));
+
+        if (StrContains(pname, "shavit", false) == -1)
+        {
+            continue;
+        }
+
+        char pver[32];
+        GetPluginInfo(plugin, PlInfo_Version, pver, sizeof(pver));
+        int major = StringToInt(pver);
+        if (major == 3 || major == 4)
+        {
+            result = major;
+            break;
+        }
     }
-    return 3;
+
+    delete iter;
+
+    if (result == 0)
+    {
+        return ShavitCompat_BuildVersion();
+    }
+    return result;
 }
 
 // --- Shavit forwards: thin adapters delegating to the records layer ---
