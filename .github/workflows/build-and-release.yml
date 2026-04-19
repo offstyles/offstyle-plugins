@@ -49,6 +49,14 @@ jobs:
           cp -r /tmp/bhoptimer/addons/sourcemod/scripting/include/* addons/sourcemod/scripting/include/
           rm -rf /tmp/bhoptimer
 
+      - name: Inject release version
+        shell: bash
+        run: |
+          raw_tag="${{ github.event.inputs.tag_name || github.ref_name }}"
+          version="${raw_tag#v}"
+          updater_inc="addons/sourcemod/scripting/include/offstyledb_updater.inc"
+          sed -i "s|#define PLUGIN_VERSION \".*\"|#define PLUGIN_VERSION \"${version}\"|" "$updater_inc"
+          grep "#define PLUGIN_VERSION" "$updater_inc"
 
       - name: Run compiler
         shell: bash
@@ -91,6 +99,8 @@ jobs:
           mkdir -p addons
           mv sourcemod addons/
           zip -rq "../$zip_name" addons/
+          cp addons/sourcemod/plugins/offstyledb.smx ../offstyledb.smx
+          cp addons/sourcemod/plugins/offstyledb_v3.smx ../offstyledb_v3.smx
           cd ..
           echo "zip_file=$zip_name" >> $GITHUB_ENV
 
@@ -141,7 +151,7 @@ jobs:
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
-          artifacts: "*.zip"
+          artifacts: "*.zip,offstyledb.smx,offstyledb_v3.smx"
           draft: false
           prerelease: false
 

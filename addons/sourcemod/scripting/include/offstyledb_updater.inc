@@ -1,0 +1,268 @@
+#if defined _offstyledb_updater_included
+ #endinput
+#endif
+#define _offstyledb_updater_included
+
+#pragma newdecls required
+#pragma semicolon 1
+
+// Injected by CI from the git tag (e.g. tag "v5.0.1" -> "5.0.1"). Leave as
+// "dev" for local/untagged builds — CI rewrites this line before compile.
+#define PLUGIN_VERSION "dev"
+
+#define UPDATER_API_URL     "https://api.github.com/repos/offstyles/offstyle-plugins/releases/latest"
+#define UPDATER_CHECK_EVERY 21600.0    // 6 hours
+
+#if defined SHAVIT_V3
+ #define UPDATER_SMX_NAME "offstyledb_v3.smx"
+ #define UPDATER_SM_NAME  "offstyledb_v3"
+#else
+ #define UPDATER_SMX_NAME "offstyledb.smx"
+ #define UPDATER_SM_NAME  "offstyledb"
+#endif
+
+void Updater_OnPluginStart()
+{
+    gCV_AutoUpdate = new Convar("OSdb_autoupdate", "2", "Autoupdater: off (0), check + notify only (1), check + download + auto-apply (2, default).", 0, true, 0.0, true, 2.0);
+
+    RegConsoleCmd("osdb_check_update", Command_CheckUpdate);
+    RegConsoleCmd("osdb_apply_update", Command_ApplyUpdate);
+
+    CreateTimer(UPDATER_CHECK_EVERY, Timer_CheckUpdate, _, TIMER_REPEAT);
+}
+
+void Updater_OnConfigsExecuted()
+{
+    Updater_CheckForUpdate(true);
+}
+
+public Action Timer_CheckUpdate(Handle timer)
+{
+    Updater_CheckForUpdate(true);
+    return Plugin_Continue;
+}
+
+void Updater_CheckForUpdate(bool silent)
+{
+    if (gCV_AutoUpdate.IntValue == 0)
+    {
+        if (!silent)
+        {
+            PrintToServer("[OSdb] Autoupdater is disabled (OSdb_autoupdate 0).");
+        }
+        return;
+    }
+
+    if (gB_UpdateInFlight)
+    {
+        if (!silent)
+        {
+            PrintToServer("[OSdb] An update check is already in progress.");
+        }
+        DebugPrint("[OSdb] Skipping update check, one is already in flight");
+        return;
+    }
+
+    DebugPrint("[OSdb] Checking for updates (silent=%s, current=%s)", silent ? "true" : "false", PLUGIN_VERSION);
+
+    gB_UpdateInFlight = true;
+
+    HTTPRequest req = new HTTPRequest(UPDATER_API_URL);
+    req.SetHeader("Accept", "application/vnd.github+json");
+    req.SetHeader("User-Agent", "offstyledb-updater");
+    req.Get(Callback_OnLatestRelease, silent ? 1 : 0);
+}
+
+public void Callback_OnLatestRelease(HTTPResponse resp, any value)
+{
+    bool silent = (value == 1);
+
+    if (resp.Status != HTTPStatus_OK || resp.Data == null)
+    {
+        LogError("[OSdb] Update check failed: status = %d", resp.Status);
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    JSONObject data = view_as<JSONObject>(resp.Data);
+    char       tag[32];
+
+    if (!data.GetString("tag_name", tag, sizeof(tag)))
+    {
+        LogError("[OSdb] Update check: response missing tag_name");
+        delete data;
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    strcopy(gS_LatestTag, sizeof(gS_LatestTag), tag);
+
+    // strip leading 'v' so "v5" compares as "5"
+    int  tagOffset = (tag[0] == 'v' || tag[0] == 'V') ? 1 : 0;
+    bool newer    = !StrEqual(tag[tagOffset], PLUGIN_VERSION);
+
+    DebugPrint("[OSdb] Latest release tag: %s (current: %s)", tag, PLUGIN_VERSION);
+
+    if (!newer)
+    {
+        if (!silent)
+        {
+            PrintToServer("[OSdb] Already up to date (version %s).", PLUGIN_VERSION);
+        }
+        delete data;
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    PrintToServer("[OSdb] New version available: %s (current: %s)", tag, PLUGIN_VERSION);
+    LogMessage("[OSdb] New version available: %s (current: %s)", tag, PLUGIN_VERSION);
+
+    if (gCV_AutoUpdate.IntValue < 2)
+    {
+        PrintToServer("[OSdb] Set OSdb_autoupdate 2 to auto-download, or update manually: https://github.com/offstyles/offstyle-plugins/releases/tag/%s", tag);
+        delete data;
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    char      downloadUrl[256];
+    downloadUrl[0]   = '\0';
+    JSONArray assets = view_as<JSONArray>(data.Get("assets"));
+
+    if (assets != null)
+    {
+        for (int i = 0; i < assets.Length; i++)
+        {
+            JSONObject asset = view_as<JSONObject>(assets.Get(i));
+            char name[64];
+            asset.GetString("name", name, sizeof(name));
+
+            if (StrEqual(name, UPDATER_SMX_NAME))
+            {
+                asset.GetString("browser_download_url", downloadUrl, sizeof(downloadUrl));
+                delete asset;
+                break;
+            }
+
+            delete asset;
+        }
+    }
+    delete assets;
+    delete data;
+
+    if (downloadUrl[0] == '\0')
+    {
+        LogError("[OSdb] Update check: no %s asset in release %s. Update manually: https://github.com/offstyles/offstyle-plugins/releases/tag/%s", UPDATER_SMX_NAME, tag, tag);
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    DebugPrint("[OSdb] Downloading %s from %s", UPDATER_SMX_NAME, downloadUrl);
+
+    char stagePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/" ... UPDATER_SMX_NAME ... ".new");
+
+    HTTPRequest dl = new HTTPRequest(downloadUrl);
+    dl.SetHeader("User-Agent", "offstyledb-updater");
+    dl.DownloadFile(stagePath, Callback_OnSMXDownloaded);
+}
+
+public void Callback_OnSMXDownloaded(HTTPStatus status, any value)
+{
+    gB_UpdateInFlight = false;
+
+    if (status != HTTPStatus_OK)
+    {
+        LogError("[OSdb] Update download failed with status %d", status);
+        gS_LatestTag[0] = '\0';
+        return;
+    }
+
+    PrintToServer("[OSdb] Update %s downloaded, applying...", gS_LatestTag);
+    Updater_ApplyStaged();
+}
+
+// Renames the staged .smx.new over the live .smx and reloads the plugin.
+// Returns true if the rename succeeded (the reload runs asynchronously after
+// this frame). Leaves the staged file in place on failure so it can be retried.
+bool Updater_ApplyStaged()
+{
+    char livePath[PLATFORM_MAX_PATH];
+    char stagePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, livePath,  sizeof(livePath),  "plugins/" ... UPDATER_SMX_NAME);
+    BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/" ... UPDATER_SMX_NAME ... ".new");
+
+    if (!FileExists(stagePath))
+    {
+        LogError("[OSdb] Apply update: staged file %s is missing", stagePath);
+        return false;
+    }
+
+    if (FileExists(livePath) && !DeleteFile(livePath))
+    {
+        LogError("[OSdb] Apply update failed: could not delete %s", livePath);
+        return false;
+    }
+
+    if (!RenameFile(livePath, stagePath))
+    {
+        LogError("[OSdb] Apply update failed: RenameFile %s -> %s", stagePath, livePath);
+        return false;
+    }
+
+    LogMessage("[OSdb] Applied update to version %s, reloading plugin.", gS_LatestTag);
+    PrintToServer("[OSdb] Update %s applied, reloading plugin...", gS_LatestTag);
+
+    ServerCommand("sm plugins reload " ... UPDATER_SM_NAME);
+    return true;
+}
+
+public Action Command_CheckUpdate(int client, int args)
+{
+    if (!IsUpdaterAuthorized(client))
+    {
+        ReplyToCommand(client, "[OSdb] You are not permitted to run update commands.");
+        return Plugin_Handled;
+    }
+
+    ReplyToCommand(client, "[OSdb] Checking for updates...");
+    Updater_CheckForUpdate(false);
+    return Plugin_Handled;
+}
+
+public Action Command_ApplyUpdate(int client, int args)
+{
+    if (!IsUpdaterAuthorized(client))
+    {
+        ReplyToCommand(client, "[OSdb] You are not permitted to run update commands.");
+        return Plugin_Handled;
+    }
+
+    if (Updater_ApplyStaged())
+    {
+        ReplyToCommand(client, "[OSdb] Update applied. Reloading plugin...");
+    }
+    else
+    {
+        ReplyToCommand(client, "[OSdb] No staged update available, or apply failed. Check logs.");
+    }
+    return Plugin_Handled;
+}
+
+bool IsUpdaterAuthorized(int client)
+{
+    if (client == 0)
+    {
+        return true;    // server console
+    }
+
+    int iSteamID = GetSteamAccountID(client);
+    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
+    {
+        if (iSteamID == gI_SteamIDWhitelist[i])
+        {
+            return true;
+        }
+    }
+    return false;
+}

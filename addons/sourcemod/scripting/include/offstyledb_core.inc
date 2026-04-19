@@ -111,8 +111,11 @@ ArrayList  gA_AllRecords = null;
 int       gI_BatchSize = 5000;
 ConVar    gCV_ExtendedDebugging = null;
 ConVar    gCV_SubmitMode = null;         // 0=WRs only, 1=all times (default)
-ConVar    gCV_BulkUploadMode = null;     // -1=no times, 0=WRs only (default), 1=all times  
+ConVar    gCV_BulkUploadMode = null;     // -1=no times, 0=WRs only (default), 1=all times
 ConVar    gCV_ReplayMode = null;         // -1=never, 0=WRs only, 1=all times (default)
+ConVar    gCV_AutoUpdate = null;         // 0=off, 1=check only, 2=check + download + auto-apply
+char      gS_LatestTag[32];
+bool      gB_UpdateInFlight = false;
 
 // Helper function for debug logging
 void DebugPrint(const char[] format, any ...)
@@ -206,15 +209,17 @@ void EnsureTempReplayDir()
 }
 #endif
 
+#include <offstyledb_updater>
+
 public Plugin myinfo =
 {
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
 #if defined SHAVIT_V3
-    version     = "3.1.0",
+    version     = PLUGIN_VERSION ... " (shavit v3)",
 #else
-    version     = "4.1.0",
+    version     = PLUGIN_VERSION ... " (shavit v4)",
 #endif
     url         = ""
 };
@@ -261,6 +266,8 @@ public void OnPluginStart()
     gCV_ReplayMode = new Convar("OSdb_replay_mode", "1", "Replay attachment: never (-1), WRs only (0), or all times (1, default)?", 0, true, -1.0, true, 1.0);
     gCV_PublicIP       = new Convar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.", 0);
     gCV_Authentication = new Convar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.", 0);
+
+    Updater_OnPluginStart();
 
     Convar.AutoExecConfig();
 
@@ -313,6 +320,7 @@ public void OnConfigsExecuted()
     gCV_Authentication.SetString("");
 
     GetStyleMapping();
+    Updater_OnConfigsExecuted();
 }
 
 void GetStyleMapping(bool forceRefresh = false)
