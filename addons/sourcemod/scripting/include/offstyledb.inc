@@ -138,7 +138,7 @@ public void OnPluginStart()
 
     Updater_OnPluginStart();
 
-    Convar.AutoExecConfig();
+    Convar.AutoExecConfig("plugin.offstyledb");
 
     sv_cheats       = FindConVar("sv_cheats");
 
