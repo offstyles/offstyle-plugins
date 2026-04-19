@@ -64,6 +64,7 @@ ConVar    gCV_ReplayMode = null;         // -1=never, 0=WRs only, 1=all times (d
 ConVar    gCV_AutoUpdate = null;         // 0=off, 1=check only, 2=check + download + auto-apply
 char      gS_LatestTag[32];
 bool      gB_UpdateInFlight = false;
+bool      gB_BuildMismatch = false;       // set in OnAllPluginsLoaded if running shavit differs from build
 
 // Helper function for debug logging
 void DebugPrint(const char[] format, any ...)
@@ -171,6 +172,8 @@ public void OnAllPluginsLoaded()
             GetTimerSQLPrefix(gS_MySQLPrefix, sizeof(gS_MySQLPrefix));
         }
     }
+
+    Updater_CheckBuildMatch();
 }
 
 public void OnConfigsExecuted()

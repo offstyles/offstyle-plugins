@@ -249,3 +249,182 @@ public Action Command_ApplyUpdate(int client, int args)
     return Plugin_Handled;
 }
 
+// Called from OnAllPluginsLoaded once shavit natives have been resolved.
+// Detects mismatch between this build and the running shavit version, and
+// triggers a build switch when OSdb_autoupdate is 2.
+void Updater_CheckBuildMatch()
+{
+    int running = ShavitCompat_DetectRunningVersion();
+    int built   = ShavitCompat_BuildVersion();
+
+    if (running == built)
+    {
+        return;
+    }
+
+    gB_BuildMismatch = true;
+    LogError("[OSdb] This is the shavit v%d build but the server is running shavit v%d. Records will not submit until the correct build is installed.", built, running);
+
+    int mode = gCV_AutoUpdate.IntValue;
+    if (mode == 0)
+    {
+        PrintToServer("[OSdb] OSdb_autoupdate is 0 - install offstyledb%s.smx manually, or set OSdb_autoupdate 2 to auto-correct.", running == 3 ? "_v3" : "");
+        return;
+    }
+    if (mode < 2)
+    {
+        PrintToServer("[OSdb] Set OSdb_autoupdate 2 to auto-download the correct build, or manually install offstyledb%s.smx.", running == 3 ? "_v3" : "");
+        return;
+    }
+
+    PrintToServer("[OSdb] Auto-switching to offstyledb%s.smx...", running == 3 ? "_v3" : "");
+    Updater_SwitchToBuild(running);
+}
+
+// Fetches the latest release and downloads the OTHER build's .smx asset, then
+// loads it and unloads self.
+void Updater_SwitchToBuild(int targetVersion)
+{
+    if (gB_UpdateInFlight)
+    {
+        return;
+    }
+    gB_UpdateInFlight = true;
+
+    HTTPRequest req = new HTTPRequest(UPDATER_API_URL);
+    req.SetHeader("Accept", "application/vnd.github+json");
+    req.SetHeader("User-Agent", "offstyledb-updater");
+    req.Get(Callback_OnSwitchReleaseInfo, targetVersion);
+}
+
+public void Callback_OnSwitchReleaseInfo(HTTPResponse resp, any value)
+{
+    int targetVersion = value;
+
+    if (resp.Status != HTTPStatus_OK || resp.Data == null)
+    {
+        LogError("[OSdb] Build-switch: GitHub API failed (status=%d)", resp.Status);
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    char targetSmx[64];
+    BuildSmxNameForVersion(targetVersion, targetSmx, sizeof(targetSmx));
+
+    JSONObject data     = view_as<JSONObject>(resp.Data);
+    JSONArray  assets   = view_as<JSONArray>(data.Get("assets"));
+    char       downloadUrl[256];
+    downloadUrl[0] = '\0';
+
+    if (assets != null)
+    {
+        for (int i = 0; i < assets.Length; i++)
+        {
+            JSONObject asset = view_as<JSONObject>(assets.Get(i));
+            char name[64];
+            asset.GetString("name", name, sizeof(name));
+
+            if (StrEqual(name, targetSmx))
+            {
+                asset.GetString("browser_download_url", downloadUrl, sizeof(downloadUrl));
+                delete asset;
+                break;
+            }
+
+            delete asset;
+        }
+    }
+    delete assets;
+    delete data;
+
+    if (downloadUrl[0] == '\0')
+    {
+        LogError("[OSdb] Build-switch: no %s asset in the latest release.", targetSmx);
+        gB_UpdateInFlight = false;
+        return;
+    }
+
+    char stagePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/%s.new", targetSmx);
+
+    HTTPRequest dl = new HTTPRequest(downloadUrl);
+    dl.SetHeader("User-Agent", "offstyledb-updater");
+    dl.DownloadFile(stagePath, Callback_OnSwitchDownloaded, targetVersion);
+}
+
+public void Callback_OnSwitchDownloaded(HTTPStatus status, any value)
+{
+    int targetVersion = value;
+    gB_UpdateInFlight = false;
+
+    if (status != HTTPStatus_OK)
+    {
+        LogError("[OSdb] Build-switch download failed (status=%d)", status);
+        return;
+    }
+
+    char targetSmx[64];
+    char targetSmName[32];
+    BuildSmxNameForVersion(targetVersion, targetSmx, sizeof(targetSmx));
+    BuildSmNameForVersion(targetVersion, targetSmName, sizeof(targetSmName));
+
+    char livePath[PLATFORM_MAX_PATH];
+    char stagePath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, livePath,  sizeof(livePath),  "plugins/%s",     targetSmx);
+    BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/%s.new", targetSmx);
+
+    if (FileExists(livePath) && !DeleteFile(livePath))
+    {
+        LogError("[OSdb] Build-switch: could not delete %s - install manually.", livePath);
+        return;
+    }
+
+    if (!RenameFile(livePath, stagePath))
+    {
+        LogError("[OSdb] Build-switch: rename %s -> %s failed.", stagePath, livePath);
+        return;
+    }
+
+    LogMessage("[OSdb] Build-switch: installed %s for shavit v%d.", targetSmx, targetVersion);
+    PrintToServer("[OSdb] Installed correct build %s, loading and unloading self.", targetSmx);
+
+    // Remove our own .smx so the wrong build doesn't re-load on next restart.
+    // On Windows this may fail while the plugin is loaded; admin will see the
+    // log and can clean up manually.
+    char ownPath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, ownPath, sizeof(ownPath), "plugins/" ... UPDATER_SMX_NAME);
+    if (FileExists(ownPath) && !DeleteFile(ownPath))
+    {
+        LogError("[OSdb] Build-switch: could not delete own .smx at %s - please remove manually.", ownPath);
+    }
+
+    char cmd[128];
+    FormatEx(cmd, sizeof(cmd), "sm plugins load %s", targetSmName);
+    ServerCommand(cmd);
+    ServerCommand("sm plugins unload " ... UPDATER_SM_NAME);
+}
+
+void BuildSmxNameForVersion(int version, char[] buf, int maxlen)
+{
+    if (version == 3)
+    {
+        strcopy(buf, maxlen, "offstyledb_v3.smx");
+    }
+    else
+    {
+        strcopy(buf, maxlen, "offstyledb.smx");
+    }
+}
+
+void BuildSmNameForVersion(int version, char[] buf, int maxlen)
+{
+    if (version == 3)
+    {
+        strcopy(buf, maxlen, "offstyledb_v3");
+    }
+    else
+    {
+        strcopy(buf, maxlen, "offstyledb");
+    }
+}
+

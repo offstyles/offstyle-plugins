@@ -42,6 +42,13 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
 
     DebugPrint("OnFinish: client=%d style=%d time=%f oldtime=%f track=%d", client, style, time, oldtime, track);
 
+    // Wrong-build guard: if the installed .smx doesn't match the running
+    // shavit version, suppress submissions until the updater swaps builds.
+    if (gB_BuildMismatch)
+    {
+        return;
+    }
+
     if (!IsSubmittableFinish(client, track))
     {
         return;

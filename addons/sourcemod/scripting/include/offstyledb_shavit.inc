@@ -79,13 +79,6 @@ bool IsTempReplayPath(const char[] path)
 }
 
 #if !defined SHAVIT_V3
-int GetShavitMajorVersion()
-{
-    int major = SHAVIT_VERSION_MAJOR;
-
-    return major;
-}
-
 void GetTempReplayPath(int client, char[] buffer, int maxlen)
 {
     BuildPath(Path_SM, buffer, maxlen, "data/osdb_tmp/%d_%d.replay", client, GetTime());
@@ -155,20 +148,30 @@ void ShavitCompat_MarkOptionalNatives()
 void ShavitCompat_OnPluginStart()
 {
 #if !defined SHAVIT_V3
-    int smv = GetShavitMajorVersion();
-    if (smv < 4)
-    {
-        PrintToServer("[OSdb] smv = %d", smv);
-        SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 build (offstyledb_v3.smx)");
-    }
-    else if (smv >= 5)
-    {
-        // probably needless but future proofing is nice ig
-        DebugPrint("bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
-    }
-
     EnsureTempReplayDir();
 #endif
+}
+
+// Which shavit major version this .smx was compiled for. Compile-time constant,
+// not a runtime query.
+int ShavitCompat_BuildVersion()
+{
+#if defined SHAVIT_V3
+    return 3;
+#else
+    return 4;
+#endif
+}
+
+// Runtime detection of the shavit major version actually loaded on the server.
+// Keyed on Shavit_AlsoSaveReplayTo, which is a v4-only native.
+int ShavitCompat_DetectRunningVersion()
+{
+    if (GetFeatureStatus(FeatureType_Native, "Shavit_AlsoSaveReplayTo") == FeatureStatus_Available)
+    {
+        return 4;
+    }
+    return 3;
 }
 
 // --- Shavit forwards: thin adapters delegating to the records layer ---
