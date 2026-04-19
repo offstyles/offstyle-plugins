@@ -8,7 +8,7 @@
 
 void GetStyleMapping(bool forceRefresh = false)
 {
-    DebugPrint("[OSdb] Starting style mapping request (forceRefresh: %s)", forceRefresh ? "true" : "false");
+    DebugPrint("Starting style mapping request (forceRefresh: %s)", forceRefresh ? "true" : "false");
 
     if (!forceRefresh)
     {
@@ -18,16 +18,16 @@ void GetStyleMapping(bool forceRefresh = false)
 
         if (strcmp(temp, gS_StyleHash) == 0)
         {
-            DebugPrint("[OSdb] Style hash unchanged, skipping mapping request");
+            DebugPrint("Style hash unchanged, skipping mapping request");
             return;
         }
     }
     else
     {
-        DebugPrint("[OSdb] Force refresh requested, bypassing hash check");
+        DebugPrint("Force refresh requested, bypassing hash check");
     }
 
-    DebugPrint("[OSdb] Style hash changed or forced refresh, requesting new mapping from server");
+    DebugPrint("Style hash changed or forced refresh, requesting new mapping from server");
 
     HTTPRequest hHTTPRequest;
     JSONObject  hJSONObject = new JSONObject();
@@ -64,7 +64,9 @@ void GetStyleMapping(bool forceRefresh = false)
         }
     }
     else {
-        SetFailState("Couldnt find configs/shavit-styles.cfg");
+        LogError("[OSdb] configs/shavit-styles.cfg is missing - style mapping cannot be synced. Submissions will be dropped until shavit is installed correctly.");
+        delete hJSONObject;
+        delete hHTTPRequest;
         return;
     }
 
@@ -78,23 +80,23 @@ int ConvertStyle(int style)
     if (gM_StyleMapping == null)
     {
         LogError("[OSdb] Style mapping is null in ConvertStyle");
-        DebugPrint("[OSdb] ConvertStyle called but style mapping is null");
+        DebugPrint("ConvertStyle called but style mapping is null");
         return -1;
     }
 
     char s[16];
     IntToString(style, s, sizeof(s));
 
-    DebugPrint("[OSdb] Converting style %d (key: %s)", style, s);
+    DebugPrint("Converting style %d (key: %s)", style, s);
 
     int out;
     if (gM_StyleMapping.GetValue(s, out))
     {
-        DebugPrint("[OSdb] Style %d converted to %d", style, out);
+        DebugPrint("Style %d converted to %d", style, out);
         return out;
     }
 
-    DebugPrint("[OSdb] Style %d not found in mapping, returning -1", style);
+    DebugPrint("Style %d not found in mapping, returning -1", style);
     return -1;
 }
 
@@ -125,46 +127,41 @@ void HashStyleConfig()
 
 public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 {
-    DebugPrint("[OSdb] Style mapping callback received - Status: %d", resp.Status);
+    DebugPrint("Style mapping callback received - Status: %d", resp.Status);
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
-        LogError("[OSdb] Style Mapping failed: status = %d, data = null", resp.Status);
-        DebugPrint("[OSdb] Style mapping failed with status %d", resp.Status);
-        SetFailState("[OSdb] Style Mapping returned non-ok response");
+        LogError("[OSdb] Style mapping fetch failed (status=%d). Keeping any existing mapping; will retry on next map change.", resp.Status);
+        // Invalidate the cached hash so the next OnMapEnd tries again even if
+        // shavit-styles.cfg didn't change in between.
+        gS_StyleHash[0] = '\0';
         return;
     }
 
-    DebugPrint("[OSdb] Style mapping response received successfully");
+    DebugPrint("Style mapping response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
     char       s_Data[512];
     data.GetString("data", s_Data, sizeof(s_Data));
-    // dont think we need to do it here, but doing it anyway
     delete data;
 
-    DebugPrint("[OSdb] Style mapping data extracted: %s", s_Data);
+    DebugPrint("Style mapping data extracted: %s", s_Data);
 
-    // check if StringMap is still valid FUCKING INVALID HANDLE
     if (gM_StyleMapping == null)
     {
-        LogError("[OSdb] Style mapping handle is null, recreating...");
-        DebugPrint("[OSdb] Style mapping handle was null, recreating");
         gM_StyleMapping = new StringMap();
     }
-
-    if (gM_StyleMapping.Size > 0)
+    else if (gM_StyleMapping.Size > 0)
     {
-        DebugPrint("[OSdb] Clearing existing style mapping (%d entries)", gM_StyleMapping.Size);
         gM_StyleMapping.Clear();
     }
 
-    const int MAX_STYLES = 512;    // fucking Hope people arent adding this many....
+    const int MAX_STYLES = 512;
     char      parts[MAX_STYLES][8];
 
     int       count = ExplodeString(s_Data, ",", parts, sizeof(parts), sizeof(parts[]));
 
-    DebugPrint("[OSdb] Processing style mapping with %d parts", count);
+    DebugPrint("Processing style mapping with %d parts", count);
 
     for (int i = 0; i < count - 1; i += 2)
     {
@@ -174,27 +171,27 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
         int ivalue = StringToInt(parts[i + 1]);
 
         gM_StyleMapping.SetValue(key, ivalue);
-        DebugPrint("[OSdb] Mapped style %s -> %d", key, ivalue);
+        DebugPrint("Mapped style %s -> %d", key, ivalue);
     }
 
-    DebugPrint("[OSdb] Style mapping completed with %d styles", gM_StyleMapping.Size);
+    DebugPrint("Style mapping completed with %d styles", gM_StyleMapping.Size);
 }
 
 public Action Command_ViewStyleMap(int client, int args)
 {
-    DebugPrint("[OSdb] Command_ViewStyleMap called by client %d", client);
+    DebugPrint("Command_ViewStyleMap called by client %d", client);
 
     if (gM_StyleMapping == null || gM_StyleMapping.Size == 0)
     {
         PrintToChat(client, "[OSdb] Style map is empty or null");
-        DebugPrint("[OSdb] Style mapping is null or empty");
+        DebugPrint("Style mapping is null or empty");
         return Plugin_Handled;
     }
 
     StringMapSnapshot snapshot = gM_StyleMapping.Snapshot();
     int               count    = snapshot.Length;
 
-    DebugPrint("[OSdb] Displaying style mapping with %d entries", count);
+    DebugPrint("Displaying style mapping with %d entries", count);
     PrintToChat(client, "[OSdb] Style Mapping (%d entries):", count);
 
     char key[16];
@@ -213,41 +210,19 @@ public Action Command_ViewStyleMap(int client, int args)
 
 public Action Command_RefreshMapping(int client, int args)
 {
-    DebugPrint("[OSdb] Command_RefreshMapping called by client %d", client);
-
-    int  iSteamID = GetSteamAccountID(client);
-    bool bAllowed = false;
-
-    DebugPrint("[OSdb] Checking authorization for SteamID %d", iSteamID);
-
-    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
-    {
-        if (iSteamID == gI_SteamIDWhitelist[i])
-        {
-            bAllowed = true;
-            DebugPrint("[OSdb] SteamID %d found in whitelist at index %d", iSteamID, i);
-            break;
-        }
-    }
-
-    if (!bAllowed)
+    if (!IsOSdbAdmin(client))
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to refresh the style mapping.");
-        DebugPrint("[OSdb] SteamID %d not authorized for style mapping refresh", iSteamID);
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Refreshing style mapping...");
-    DebugPrint("[OSdb] Starting style mapping refresh");
 
-    // recreate the StringMap if it's null
     if (gM_StyleMapping == null)
     {
         gM_StyleMapping = new StringMap();
-        PrintToServer("[OSdb] Recreated null StringMap handle");
-        DebugPrint("[OSdb] Recreated null StringMap handle");
     }
 
-    GetStyleMapping(true);  // Force refresh
+    GetStyleMapping(true);
     return Plugin_Handled;
 }

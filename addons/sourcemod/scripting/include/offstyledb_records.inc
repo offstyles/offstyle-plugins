@@ -40,7 +40,7 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
 {
     gPending[client].pending = false;
 
-    DebugPrint("[OSdb] OnFinish: client=%d style=%d time=%f oldtime=%f track=%d", client, style, time, oldtime, track);
+    DebugPrint("OnFinish: client=%d style=%d time=%f oldtime=%f track=%d", client, style, time, oldtime, track);
 
     if (!IsSubmittableFinish(client, track))
     {
@@ -51,7 +51,7 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
     // means no prior PB (first-time finish on this style), which should submit.
     if (oldtime != 0.0 && time >= oldtime)
     {
-        DebugPrint("[OSdb] Dropping non-PB (time=%f >= oldtime=%f)", time, oldtime);
+        DebugPrint("Dropping non-PB (time=%f >= oldtime=%f)", time, oldtime);
         return;
     }
 
@@ -60,7 +60,7 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
 
     if (!isWR && gCV_SubmitMode.IntValue == 0)
     {
-        DebugPrint("[OSdb] Skipping non-WR (submit_mode=0)");
+        DebugPrint("Skipping non-WR (submit_mode=0)");
         return;
     }
 
@@ -92,7 +92,7 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
     }
 
     gPending[client] = intent;
-    DebugPrint("[OSdb] Stashed intent for client %d (isWR=%d)", client, isWR);
+    DebugPrint("Stashed intent for client %d (isWR=%d)", client, isWR);
 }
 
 // Fills an intent from the shavit-finish params and the client's current identity.
@@ -126,7 +126,7 @@ bool Records_ShouldSaveReplay(int client, bool isbestreplay, bool istoolong)
 
     if (istoolong)
     {
-        DebugPrint("[OSdb] Replay too long (isWR=%d), submitting without replay", gPending[client].isWR);
+        DebugPrint("Replay too long (isWR=%d), submitting without replay", gPending[client].isWR);
         DispatchSubmission(gPending[client], "");
         gPending[client].pending = false;
         return false;
@@ -139,7 +139,7 @@ bool Records_ShouldSaveReplay(int client, bool isbestreplay, bool istoolong)
         return false;
     }
 
-    DebugPrint("[OSdb] Requesting non-WR replay copy for client %d", client);
+    DebugPrint("Requesting non-WR replay copy for client %d", client);
     return true;
 }
 
@@ -182,7 +182,7 @@ void Records_HandleReplaySaved(int client, bool isbestreplay, const char[] repla
         return;
     }
 
-    DebugPrint("[OSdb] Dispatching pending submission for client %d (isWR=%d)", client, gPending[client].isWR);
+    DebugPrint("Dispatching pending submission for client %d (isWR=%d)", client, gPending[client].isWR);
     DispatchSubmission(gPending[client], replayPath);
     gPending[client].pending = false;
 }
@@ -191,7 +191,7 @@ void Records_HandleReplaySaved(int client, bool isbestreplay, const char[] repla
 // may chain a replay upload.
 void DispatchSubmission(SubmissionIntent intent, const char[] replayPath)
 {
-    DebugPrint("[OSdb] Dispatch: map=%s steamid=%s name=%s time=%.3f style=%d isWR=%s replay=%s",
+    DebugPrint("Dispatch: map=%s steamid=%s name=%s time=%.3f style=%d isWR=%s replay=%s",
                intent.map, intent.steamId, intent.name, intent.time, intent.rawStyle,
                intent.isWR ? "true" : "false", replayPath);
 
@@ -241,7 +241,7 @@ void UploadReplay(const char[] replayKey, const char[] replayPath)
         return;
     }
 
-    DebugPrint("[OSdb] Uploading replay: key=%s path=%s", replayKey, replayPath);
+    DebugPrint("Uploading replay: key=%s path=%s", replayKey, replayPath);
 
     HTTPRequest request = new HTTPRequest(API_BASE_URL... "/upload_replay");
     AddHeaders(request);
@@ -260,7 +260,7 @@ void CleanupTempReplay(const char[] replayPath)
         return;
     }
     DeleteFile(replayPath);
-    DebugPrint("[OSdb] Deleted temp replay: %s", replayPath);
+    DebugPrint("Deleted temp replay: %s", replayPath);
 }
 
 public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
@@ -274,7 +274,7 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 
     if (gCV_ReplayMode.IntValue == -1)
     {
-        DebugPrint("[OSdb] Replay mode -1, not uploading replay");
+        DebugPrint("Replay mode -1, not uploading replay");
         CleanupTempReplay(replayPath);
         return;
     }
@@ -303,12 +303,12 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 
     if (hasReplayKey && replayKey[0] != '\0' && replayPath[0] != '\0')
     {
-        DebugPrint("[OSdb] Got replay_key=%s, uploading %s", replayKey, replayPath);
+        DebugPrint("Got replay_key=%s, uploading %s", replayKey, replayPath);
         UploadReplay(replayKey, replayPath);
     }
     else
     {
-        DebugPrint("[OSdb] No replay upload (hasKey=%d, pathEmpty=%d)", hasReplayKey, replayPath[0] == '\0');
+        DebugPrint("No replay upload (hasKey=%d, pathEmpty=%d)", hasReplayKey, replayPath[0] == '\0');
         CleanupTempReplay(replayPath);
     }
 }

@@ -20,12 +20,6 @@ void AddHeaders(HTTPRequest req)
     req.SetHeader("hostname", sHostname);
     req.SetHeader("auth", gS_AuthKey);
     req.SetHeader("timer_plugin", gS_TimerVersion[gI_TimerVersion]);
-
-    if (gB_IsProcessingBatches && strlen(gS_BulkCode) > 0)
-    {
-        DebugPrint("[OSdb] Adding bulk_verify header: %s", gS_BulkCode);
-        req.SetHeader("bulk_verify", gS_BulkCode);
-    }
 }
 
 // from smlib

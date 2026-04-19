@@ -8,39 +8,21 @@
 
 public Action Command_SendAllWRs(int client, int args)
 {
-    DebugPrint("[OSdb] Command_SendAllWRs called by client %d", client);
-
-    int  iSteamID = GetSteamAccountID(client);
-    bool bAllowed = false;
-
-    DebugPrint("[OSdb] Checking authorization for SteamID %d", iSteamID);
-
-    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
-    {
-        if (iSteamID == gI_SteamIDWhitelist[i])
-        {
-            bAllowed = true;
-            DebugPrint("[OSdb] SteamID %d found in whitelist at index %d", iSteamID, i);
-            break;
-        }
-    }
-
-    if (!bAllowed)
+    if (!IsOSdbAdmin(client))
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to fetch the records list.");
-        DebugPrint("[OSdb] SteamID %d not authorized for bulk operations", iSteamID);
         return Plugin_Handled;
     }
 
     if (gB_IsProcessingBatches)
     {
         ReplyToCommand(client, "[OSdb] Already processing batches. Please wait for current operation to complete.");
-        DebugPrint("[OSdb] Bulk operation request denied - already processing batches");
+        DebugPrint("Bulk operation request denied - already processing batches");
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Requesting bulk verification...");
-    DebugPrint("[OSdb] Starting bulk verification request");
+    DebugPrint("Starting bulk verification request");
     RequestBulkVerification();
 
     return Plugin_Handled;
@@ -68,14 +50,14 @@ public Action Command_BatchStatus(int client, int args)
 
 void RequestBulkVerification()
 {
-    DebugPrint("[OSdb] Starting bulk verification request");
+    DebugPrint("Starting bulk verification request");
 
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_verification");
     AddHeaders(hHTTPRequest);
 
     JSONObject hVerificationBody = new JSONObject();
 
-    DebugPrint("[OSdb] Sending bulk verification request to server");
+    DebugPrint("Sending bulk verification request to server");
     hHTTPRequest.Post(hVerificationBody, Callback_OnBulkVerification);
 
     delete hVerificationBody;
@@ -84,23 +66,23 @@ void RequestBulkVerification()
 
 public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 {
-    DebugPrint("[OSdb] Bulk verification callback received - Status: %d", resp.Status);
+    DebugPrint("Bulk verification callback received - Status: %d", resp.Status);
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
         LogError("[OSdb] Bulk verification failed: status = %d, data = null", resp.Status);
-        DebugPrint("[OSdb] Bulk verification failed with status %d", resp.Status);
+        DebugPrint("Bulk verification failed with status %d", resp.Status);
         return;
     }
 
-    DebugPrint("[OSdb] Bulk verification response received successfully");
+    DebugPrint("Bulk verification response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
 
     if (!data.HasKey("key_to_send_times"))
     {
         LogError("[OSdb] Bulk verification response missing 'key_to_send_times' field");
-        DebugPrint("[OSdb] Bulk verification response missing required field");
+        DebugPrint("Bulk verification response missing required field");
         delete data;
         return;
     }
@@ -108,7 +90,7 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
     data.GetString("key_to_send_times", gS_BulkCode, sizeof(gS_BulkCode));
     delete data;
 
-    DebugPrint("[OSdb] Bulk code received: %s", gS_BulkCode);
+    DebugPrint("Bulk code received: %s", gS_BulkCode);
 
     PrintToServer("[OSdb] Bulk verification successful, starting record collection...");
     SendRecordDatabase();
@@ -116,15 +98,15 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 
 void SendRecordDatabase()
 {
-    DebugPrint("[OSdb] Starting record database query");
+    DebugPrint("Starting record database query");
 
     int bulkMode = gCV_BulkUploadMode.IntValue;
-    DebugPrint("[OSdb] Bulk upload mode: %d (-1=no times, 0=WRs only, 1=all times)", bulkMode);
+    DebugPrint("Bulk upload mode: %d (-1=no times, 0=WRs only, 1=all times)", bulkMode);
 
     if (bulkMode == -1)
     {
         PrintToServer("[OSdb] Bulk upload disabled (mode = -1), skipping record collection");
-        DebugPrint("[OSdb] Bulk upload skipped due to mode = -1");
+        DebugPrint("Bulk upload skipped due to mode = -1");
         return;
     }
 
@@ -160,13 +142,13 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
 {
     if (results == null)
     {
-        LogError("[osdb] SQL_GetRecords_Callback results are null, SQL error: %s", error);
+        LogError("[OSdb] SQL_GetRecords_Callback results are null, SQL error: %s", error);
         return;
     }
 
     if (results.RowCount == 0)
     {
-        LogError("[osdb] SQL_GetRecords_Callback rowcount is 0");
+        LogError("[OSdb] SQL_GetRecords_Callback rowcount is 0");
         return;
     }
 
@@ -180,7 +162,7 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
     }
     gA_AllRecords = new ArrayList();
 
-    PrintToServer("[osdb] Collecting %d records for batch processing...", results.RowCount);
+    PrintToServer("[OSdb] Collecting %d records for batch processing...", results.RowCount);
 
     while (results.FetchRow())
     {
@@ -194,7 +176,7 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
         }
     }
 
-    PrintToServer("[osdb] Collected %d records, starting batch processing...", gI_TotalRecords);
+    PrintToServer("[OSdb] Collected %d records, starting batch processing...", gI_TotalRecords);
     ProcessNextBatch();
 }
 
@@ -206,16 +188,11 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     char sSteamID[32];
     results.FetchString(1, sSteamID, sizeof(sSteamID));
 
-    switch (gI_TimerVersion)
+    // Shavit stores the auth column in the compact Steam2 form; the API expects
+    // Steam3. Wrap bare account IDs in [u:1:...].
+    if (StrContains(sSteamID, "[U:1:]", false) == -1)
     {
-        // we dont Really need to do this switch case shit anymore, but whatever
-        case TimerVersion_shavit:
-        {
-            if (StrContains(sSteamID, "[U:1:]", false) == -1)
-            {
-                Format(sSteamID, sizeof(sSteamID), "[u:1:%s]", sSteamID);
-            }
-        }
+        Format(sSteamID, sizeof(sSteamID), "[u:1:%s]", sSteamID);
     }
 
     char sName[MAX_NAME_LENGTH];
@@ -238,13 +215,13 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
 
 void ProcessNextBatch()
 {
-    DebugPrint("[OSdb] ProcessNextBatch called - gB_IsProcessingBatches: %s, gS_BulkCode length: %d",
+    DebugPrint("ProcessNextBatch called - gB_IsProcessingBatches: %s, gS_BulkCode length: %d",
                gB_IsProcessingBatches ? "true" : "false", strlen(gS_BulkCode));
-    DebugPrint("[OSdb] Current bulk code value: %s", gS_BulkCode);
+    DebugPrint("Current bulk code value: %s", gS_BulkCode);
 
     if (gA_AllRecords == null || gA_AllRecords.Length == 0)
     {
-        PrintToServer("[osdb] No more records to process, finishing batch operation.");
+        PrintToServer("[OSdb] No more records to process, finishing batch operation.");
         FinishBatchProcessing();
         return;
     }
@@ -254,7 +231,7 @@ void ProcessNextBatch()
 
     if (startIndex >= gI_TotalRecords)
     {
-        PrintToServer("[osdb] All batches processed, finishing operation.");
+        PrintToServer("[OSdb] All batches processed, finishing operation.");
         FinishBatchProcessing();
         return;
     }
@@ -264,7 +241,7 @@ void ProcessNextBatch()
         endIndex = gI_TotalRecords;
     }
 
-    PrintToServer("[osdb] Processing batch %d (%d-%d of %d records)...",
+    PrintToServer("[OSdb] Processing batch %d (%d-%d of %d records)...",
                     gI_CurrentBatch + 1, startIndex + 1, endIndex, gI_TotalRecords);
 
     JSONArray hArray = new JSONArray();
@@ -275,11 +252,11 @@ void ProcessNextBatch()
         hArray.Push(hJSON);
     }
 
-    DebugPrint("[OSdb] Created JSON array with %d records", hArray.Length);
+    DebugPrint("Created JSON array with %d records", hArray.Length);
 
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_records");
-    DebugPrint("[OSdb] Created HTTP request to %s/bulk_records", API_BASE_URL);
     AddHeaders(hHTTPRequest);
+    hHTTPRequest.SetHeader("bulk_verify", gS_BulkCode);
 
     JSONObject hRecordsList = new JSONObject();
     hRecordsList.Set("records", hArray);
@@ -288,7 +265,7 @@ void ProcessNextBatch()
     pack.WriteCell(gI_CurrentBatch);
     pack.WriteCell(hArray.Length);
 
-    DebugPrint("[OSdb] Sending batch %d with %d records", gI_CurrentBatch + 1, hArray.Length);
+    DebugPrint("Sending batch %d with %d records", gI_CurrentBatch + 1, hArray.Length);
     hHTTPRequest.Post(hRecordsList, Callback_OnBatchSent, pack);
 
     delete hRecordsList;
@@ -302,12 +279,12 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
     int batchSize = pack.ReadCell();
     delete pack;
 
-    DebugPrint("[OSdb] Callback_OnBatchSent received - Status: %d", resp.Status);
+    DebugPrint("Callback_OnBatchSent received - Status: %d", resp.Status);
 
     if (resp.Status != HTTPStatus_OK)
     {
-        LogError("[osdb] Batch %d failed to send: status = %d", batchNumber + 1, resp.Status);
-        DebugPrint("[OSdb] Batch %d failed with HTTP status %d", batchNumber + 1, resp.Status);
+        LogError("[OSdb] Batch %d failed to send: status = %d", batchNumber + 1, resp.Status);
+        DebugPrint("Batch %d failed with HTTP status %d", batchNumber + 1, resp.Status);
 
         // Try to extract error message from response
         if (resp.Data != null)
@@ -316,27 +293,27 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
             char errorMsg[256];
             if (errorData.GetString("error", errorMsg, sizeof(errorMsg)))
             {
-                DebugPrint("[OSdb] Server error message: %s", errorMsg);
-                LogError("[osdb] Server error: %s", errorMsg);
+                DebugPrint("Server error message: %s", errorMsg);
+                LogError("[OSdb] Server error: %s", errorMsg);
             }
             if (errorData.GetString("message", errorMsg, sizeof(errorMsg)))
             {
-                DebugPrint("[OSdb] Server message: %s", errorMsg);
-                LogError("[osdb] Server message: %s", errorMsg);
+                DebugPrint("Server message: %s", errorMsg);
+                LogError("[OSdb] Server message: %s", errorMsg);
             }
         }
         else
         {
-            DebugPrint("[OSdb] No response data available");
+            DebugPrint("No response data available");
         }
 
-        PrintToServer("[osdb] Batch %d failed, stopping batch processing.", batchNumber + 1);
+        PrintToServer("[OSdb] Batch %d failed, stopping batch processing.", batchNumber + 1);
         FinishBatchProcessing();
         return;
     }
 
-    PrintToServer("[osdb] Batch %d (%d records) sent successfully.", batchNumber + 1, batchSize);
-    DebugPrint("[OSdb] Batch %d completed successfully", batchNumber + 1);
+    PrintToServer("[OSdb] Batch %d (%d records) sent successfully.", batchNumber + 1, batchSize);
+    DebugPrint("Batch %d completed successfully", batchNumber + 1);
 
     gI_CurrentBatch++;
     ProcessNextBatch();
@@ -344,7 +321,7 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
 
 void FinishBatchProcessing()
 {
-    DebugPrint("[OSdb] FinishBatchProcessing called - clearing bulk code: %s", gS_BulkCode);
+    DebugPrint("FinishBatchProcessing called - clearing bulk code: %s", gS_BulkCode);
 
     gB_IsProcessingBatches = false;
     gI_CurrentBatch = 0;
@@ -352,13 +329,13 @@ void FinishBatchProcessing()
 
     if (gA_AllRecords != null)
     {
-        DebugPrint("[OSdb] Cleaning up %d records from ArrayList", gA_AllRecords.Length);
+        DebugPrint("Cleaning up %d records from ArrayList", gA_AllRecords.Length);
         delete gA_AllRecords;
         gA_AllRecords = null;
     }
 
     gS_BulkCode[0] = '\0';
 
-    DebugPrint("[OSdb] Batch processing state reset complete");
-    PrintToServer("[osdb] Batch processing completed.");
+    DebugPrint("Batch processing state reset complete");
+    PrintToServer("[OSdb] Batch processing completed.");
 }

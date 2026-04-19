@@ -14,7 +14,6 @@ native bool   Shavit_IsPaused(int client);
 forward void   Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void   Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong);
-forward void   OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
 
 // stocks from shavit.inc (v3 doesn't ship the helpers we use)
 stock Database GetTimerDatabaseHandle()
@@ -100,7 +99,7 @@ void EnsureTempReplayDir()
     if (!DirExists(sDir))
     {
         CreateDirectory(sDir, 511);
-        DebugPrint("[OSdb] Created temp replay directory: %s", sDir);
+        DebugPrint("Created temp replay directory: %s", sDir);
         return;
     }
 
@@ -131,7 +130,7 @@ void EnsureTempReplayDir()
 
     if (swept > 0)
     {
-        DebugPrint("[OSdb] Swept %d orphan temp replays", swept);
+        DebugPrint("Swept %d orphan temp replays", swept);
     }
 }
 #endif
@@ -142,7 +141,6 @@ void ShavitCompat_MarkOptionalNatives()
 {
     MarkNativeAsOptional("Shavit_GetWorldRecord");
     MarkNativeAsOptional("Shavit_OnReplaySaved");
-    MarkNativeAsOptional("OnTimerFinished_Post");
     MarkNativeAsOptional("Shavit_OnFinish");
     MarkNativeAsOptional("Shavit_IsPracticeMode");
     MarkNativeAsOptional("Shavit_IsPaused");
@@ -166,7 +164,7 @@ void ShavitCompat_OnPluginStart()
     else if (smv >= 5)
     {
         // probably needless but future proofing is nice ig
-        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+        DebugPrint("bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
     }
 
     EnsureTempReplayDir();
@@ -210,7 +208,7 @@ public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float tim
     char sTempPath[PLATFORM_MAX_PATH];
     GetTempReplayPath(client, sTempPath, sizeof(sTempPath));
     Shavit_AlsoSaveReplayTo(sTempPath);
-    DebugPrint("[OSdb] Requesting non-WR replay at %s", sTempPath);
+    DebugPrint("Requesting non-WR replay at %s", sTempPath);
 }
 
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
