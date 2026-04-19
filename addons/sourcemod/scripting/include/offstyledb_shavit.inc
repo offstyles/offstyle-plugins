@@ -11,6 +11,9 @@
 native float  Shavit_GetWorldRecord(int style, int track);
 native bool   Shavit_IsPracticeMode(int client);
 native bool   Shavit_IsPaused(int client);
+// v4-only native. Declared here so the build-mismatch detector can probe its
+// availability via GetFeatureStatus. Never actually called from the v3 build.
+native void   Shavit_AlsoSaveReplayTo(const char[] path);
 forward void   Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void   Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong);
@@ -137,11 +140,14 @@ void ShavitCompat_MarkOptionalNatives()
     MarkNativeAsOptional("Shavit_OnFinish");
     MarkNativeAsOptional("Shavit_IsPracticeMode");
     MarkNativeAsOptional("Shavit_IsPaused");
+    // Shavit_AlsoSaveReplayTo is v4-only. Marked optional in both builds so
+    // the v3 build can probe its availability for build-mismatch detection
+    // without the plugin refusing to load when the native is absent.
+    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
 #if defined SHAVIT_V3
     MarkNativeAsOptional("Shavit_ShouldSaveReplayCopy");
 #else
     MarkNativeAsOptional("Shavit_AddAdditionalReplayPathsHere");
-    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
 #endif
 }
 
