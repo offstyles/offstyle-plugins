@@ -13,6 +13,51 @@ forward void   Shavit_OnReplaySaved(int client, int style, float time, int jumps
 forward void   Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong);
 forward void   OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
+
+// stocks from shavit.inc (v3 doesn't ship the helpers we use)
+stock Database GetTimerDatabaseHandle()
+{
+    Database db = null;
+    char     sError[255];
+
+    if (SQL_CheckConfig("shavit"))
+    {
+        if ((db = SQL_Connect("shavit", true, sError, sizeof(sError))) == null)
+        {
+            SetFailState("[OSdb] OSdb plugin startup failed. Reason: %s", sError);
+        }
+    }
+    else
+    {
+        db = SQLite_UseDatabase("shavit", sError, sizeof(sError));
+    }
+
+    return db;
+}
+
+stock void GetTimerSQLPrefix(char[] buffer, int maxlen)
+{
+    char sFile[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, sFile, sizeof(sFile), "configs/shavit-prefix.txt");
+
+    File fFile = OpenFile(sFile, "r");
+
+    if (fFile == null)
+    {
+        delete fFile;
+        SetFailState("[OSdb] Cannot open \"configs/shavit-prefix.txt\". Make sure this file exists and that the server has read permissions to it.");
+    }
+
+    char sLine[PLATFORM_MAX_PATH * 2];
+
+    if (fFile.ReadLine(sLine, sizeof(sLine)))
+    {
+        TrimString(sLine);
+        strcopy(buffer, maxlen, sLine);
+    }
+
+    delete fFile;
+}
 #else
 #undef REQUIRE_PLUGIN
 #include <shavit>
