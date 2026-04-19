@@ -209,7 +209,7 @@ void DispatchSubmission(SubmissionIntent intent, const char[] replayPath)
 
     if (sv_cheats.BoolValue)
     {
-        LogError("[OSdb] Attempted to submit record with sv_cheats enabled. map=%s steamid=%s time=%f",
+        //LogError("[OSdb] Attempted to submit record with sv_cheats enabled. map=%s steamid=%s time=%f",
                  intent.map, intent.steamId, intent.time);
         CleanupTempReplay(replayPath);
         return;
