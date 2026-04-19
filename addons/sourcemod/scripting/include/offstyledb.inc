@@ -1,0 +1,228 @@
+#if defined _offstyledb_included
+ #endinput
+#endif
+#define _offstyledb_included
+
+#include <convar_class>
+#include <sourcemod>
+#include <keyvalues>
+#include <ripext>
+#include <sha1>
+
+#include <offstyledb_shavit>
+
+#pragma dynamic 104857600
+#pragma newdecls required
+#pragma semicolon 1
+
+enum
+{
+    TimerVersion_Unknown,
+    TimerVersion_shavit,
+    TimerVersion_END
+}
+
+int  gI_TimerVersion     = TimerVersion_Unknown;
+char gS_TimerVersion[][] = {
+    "Unknown Timer",
+    "shavit",
+};
+
+char gS_TimerNatives[][] = {
+    "<none>",
+    "Shavit_ChangeClientStyle",    // shavit
+};
+
+// SteamIDs which can fetch records from the server
+int gI_SteamIDWhitelist[] = {
+    903787042,      // jeft
+    401295170       // tommy
+};
+
+int       gI_Tickrate = 0;
+Database  gH_Database = null;
+char      gS_MySQLPrefix[32];
+ConVar    gCV_PublicIP = null;
+char      gS_AuthKey[64];
+ConVar    gCV_Authentication = null;
+ConVar    sv_cheats          = null;
+StringMap gM_StyleMapping    = null;
+char      gS_StyleHash[160];
+
+char      gS_BulkCode[128];
+bool      gB_IsProcessingBatches = false;
+int       gI_CurrentBatch = 0;
+int       gI_TotalRecords = 0;
+ArrayList  gA_AllRecords = null;
+int       gI_BatchSize = 5000;
+ConVar    gCV_ExtendedDebugging = null;
+ConVar    gCV_SubmitMode = null;         // 0=WRs only, 1=all times (default)
+ConVar    gCV_BulkUploadMode = null;     // -1=no times, 0=WRs only (default), 1=all times
+ConVar    gCV_ReplayMode = null;         // -1=never, 0=WRs only, 1=all times (default)
+ConVar    gCV_AutoUpdate = null;         // 0=off, 1=check only, 2=check + download + auto-apply
+char      gS_LatestTag[32];
+bool      gB_UpdateInFlight = false;
+
+// Helper function for debug logging
+void DebugPrint(const char[] format, any ...)
+{
+    if (gCV_ExtendedDebugging == null || !gCV_ExtendedDebugging.BoolValue)
+    {
+        return;
+    }
+
+    char buffer[512];
+    VFormat(buffer, sizeof(buffer), format, 2);
+    PrintToServer("[OSdb Debug] %s", buffer);
+}
+
+#include <offstyledb_http>
+#include <offstyledb_styles>
+#include <offstyledb_records>
+#include <offstyledb_bulk>
+#include <offstyledb_updater>
+
+public Plugin myinfo =
+{
+    name        = "Offstyle Database",
+    author      = "shavit (Modified by Jeft & Tommy)",
+    description = "Provides Offstyles with a database of bhop records.",
+#if defined SHAVIT_V3
+    version     = PLUGIN_VERSION ... " (shavit v3)",
+#else
+    version     = PLUGIN_VERSION ... " (shavit v4)",
+#endif
+    url         = ""
+};
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+    MarkNativeAsOptional("Shavit_GetWorldRecord");
+    MarkNativeAsOptional("Shavit_OnReplaySaved");
+    MarkNativeAsOptional("OnTimerFinished_Post");
+    MarkNativeAsOptional("Shavit_OnFinish");
+    MarkNativeAsOptional("Shavit_IsPracticeMode");
+    MarkNativeAsOptional("Shavit_IsPaused");
+#if defined SHAVIT_V3
+    MarkNativeAsOptional("Shavit_ShouldSaveReplayCopy");
+#else
+    MarkNativeAsOptional("Shavit_AddAdditionalReplayPathsHere");
+    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
+#endif
+
+    return APLRes_Success;
+}
+
+public void OnPluginStart()
+{
+#if !defined SHAVIT_V3
+    int smv = GetShavitMajorVersion();
+    if (smv < 4) {
+        PrintToServer("[OSdb] smv = %d", smv);
+        SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 build (offstyledb_v3.smx)");
+    } else if (smv >= 5) {
+        // probably needless but future proofing is nice ig
+        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+    }
+#endif
+
+    RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs);
+    RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
+    RegConsoleCmd("osdb_batch_status", Command_BatchStatus);
+    RegConsoleCmd("osdb_refresh_mapping", Command_RefreshMapping);
+
+    gCV_ExtendedDebugging = new Convar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", 0, true, 0.0, true, 1.0);
+    gCV_SubmitMode = new Convar("OSdb_submit_mode", "1", "Submit only WRs (0) or all times (1)?", 0, true, 0.0, true, 1.0);
+    gCV_BulkUploadMode = new Convar("OSdb_bulk_upload_mode", "0", "Bulk upload (database time sync): no times (-1), only WRs (0), or all times (1)?", 0, true, -1.0, true, 1.0);
+    gCV_ReplayMode = new Convar("OSdb_replay_mode", "1", "Replay attachment: never (-1), WRs only (0), or all times (1, default)?", 0, true, -1.0, true, 1.0);
+    gCV_PublicIP       = new Convar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.", 0);
+    gCV_Authentication = new Convar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.", 0);
+
+    Updater_OnPluginStart();
+
+    Convar.AutoExecConfig();
+
+    sv_cheats       = FindConVar("sv_cheats");
+
+    gM_StyleMapping = new StringMap();
+
+#if !defined SHAVIT_V3
+    EnsureTempReplayDir();
+#endif
+
+    DebugPrint("[OSdb] OSdb plugin started, commands registered, ConVars created");
+}
+
+public void OnAllPluginsLoaded()
+{
+    for (int i = 1; i < TimerVersion_END; i++)
+    {
+        if (GetFeatureStatus(FeatureType_Native, gS_TimerNatives[i]) != FeatureStatus_Unknown)
+        {
+            gI_TimerVersion = i;
+            PrintToServer("[OSdb] Detected timer plugin %s based on native %s", gS_TimerVersion[i], gS_TimerNatives[i]);
+
+            break;
+        }
+    }
+
+    strcopy(gS_MySQLPrefix, sizeof(gS_MySQLPrefix), "");
+
+    switch (gI_TimerVersion)
+    {
+        case TimerVersion_Unknown: SetFailState("[OSdb] Supported timer plugin was not found.");
+
+        case TimerVersion_shavit:
+        {
+            gH_Database = GetTimerDatabaseHandle();
+            GetTimerSQLPrefix(gS_MySQLPrefix, sizeof(gS_MySQLPrefix));
+        }
+    }
+}
+
+public void OnConfigsExecuted()
+{
+    if (strlen(gS_AuthKey) == 0)
+    {
+        gCV_Authentication.GetString(gS_AuthKey, sizeof(gS_AuthKey));
+    }
+    gCV_Authentication.SetString("");
+
+    GetStyleMapping();
+    Updater_OnConfigsExecuted();
+}
+
+public void OnMapStart()
+{
+    char sMapName[256];
+    GetCurrentMap(sMapName, sizeof(sMapName));
+    DebugPrint("[OSdb] Map started: %s", sMapName);
+
+    gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
+    DebugPrint("[OSdb] Tickrate calculated: %d", gI_Tickrate);
+}
+
+public void OnMapEnd()
+{
+    DebugPrint("[OSdb] Map ending, requesting style mapping");
+    GetStyleMapping();
+}
+
+public void OnPluginEnd()
+{
+    DebugPrint("[OSdb] Plugin shutting down, cleaning up resources");
+
+    if (gA_AllRecords != null)
+    {
+        DebugPrint("[OSdb] Cleaning up AllRecords ArrayList");
+        delete gA_AllRecords;
+        gA_AllRecords = null;
+    }
+
+    if (gM_StyleMapping != null)
+    {
+        DebugPrint("[OSdb] Cleaning up StyleMapping StringMap");
+        delete gM_StyleMapping;
+        gM_StyleMapping = null;
+    }
+}
