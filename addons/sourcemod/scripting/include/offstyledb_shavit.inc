@@ -184,9 +184,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
 // v3: we return Plugin_Handled to ask shavit to save a /copy/ of the replay.
 public Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
 {
-    return Records_ShouldSaveReplay(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, istoolong)
-        ? Plugin_Handled
-        : Plugin_Continue;
+    return Records_ShouldSaveReplay(client, isbestreplay, istoolong) ? Plugin_Handled : Plugin_Continue;
 }
 
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
@@ -197,14 +195,14 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
         return;
     }
 
-    Records_HandleReplaySaved(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, replaypath, iscopy);
+    Records_HandleReplaySaved(client, isbestreplay, replaypath, iscopy);
 }
 #else
 // v4: we register a temp path via Shavit_AlsoSaveReplayTo, and shavit calls us back
 // with the saved file in Shavit_OnReplaySaved.
 public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
 {
-    if (!Records_ShouldSaveReplay(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, istoolong))
+    if (!Records_ShouldSaveReplay(client, isbestreplay, istoolong))
     {
         return;
     }
@@ -232,6 +230,6 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
         return;
     }
 
-    Records_HandleReplaySaved(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, replayPath, isOurCopy);
+    Records_HandleReplaySaved(client, isbestreplay, replayPath, isOurCopy);
 }
 #endif
