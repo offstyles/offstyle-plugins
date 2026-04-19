@@ -260,8 +260,8 @@ void ProcessNextBatch()
     DebugPrint("Created JSON array with %d records", hArray.Length);
 
     HTTPRequest hHTTPRequest = new HTTPRequest(API_BASE_URL... "/bulk_records");
-    DebugPrint("Created HTTP request to %s/bulk_records", API_BASE_URL);
     AddHeaders(hHTTPRequest);
+    hHTTPRequest.SetHeader("bulk_verify", gS_BulkCode);
 
     JSONObject hRecordsList = new JSONObject();
     hRecordsList.Set("records", hArray);
