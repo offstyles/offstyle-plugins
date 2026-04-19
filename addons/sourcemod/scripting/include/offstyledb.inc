@@ -178,17 +178,10 @@ public void OnAllPluginsLoaded()
 
 public void OnConfigsExecuted()
 {
-    // TODO: we read the key once and blank the ConVar so it doesn't leak via
-    // sm_cvar. The strlen guard makes a plugin reload re-read correctly
-    // (since we blanked the ConVar after), but the interaction is subtle -
-    // worth replacing with a proper secret-loading path (env var / sealed
-    // file) if one appears.
-    if (strlen(gS_AuthKey) == 0)
-    {
-        gCV_Authentication.GetString(gS_AuthKey, sizeof(gS_AuthKey));
-    }
-    gCV_Authentication.SetString("");
-
+    // Auth key is read lazily on the first HTTP call (see AddHeaders). Doing
+    // it here was fragile: the first OnConfigsExecuted can fire before the
+    // plugin's own cfg has been exec'd, causing the default "super_secret_key"
+    // to be stashed and the strlen guard to prevent any later re-read.
     GetStyleMapping();
     Updater_OnConfigsExecuted();
 }

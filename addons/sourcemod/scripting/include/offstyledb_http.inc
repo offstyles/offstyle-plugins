@@ -16,6 +16,22 @@ void AddHeaders(HTTPRequest req)
     char sHostname[128];
     FindConVar("hostname").GetString(sHostname, sizeof(sHostname));
 
+    // Lazy-read the key on first use. Doing this in OnConfigsExecuted was
+    // fragile: the first fire can precede the plugin's own cfg exec, which
+    // stashes the default and the ConVar blank prevents recovery. Skip stash
+    // if the ConVar still holds the default sentinel so a later call retries.
+    // Blank the ConVar once we've captured a real value so sm_cvar can't leak it.
+    if (strlen(gS_AuthKey) == 0)
+    {
+        char sKey[64];
+        gCV_Authentication.GetString(sKey, sizeof(sKey));
+        if (strlen(sKey) > 0 && !StrEqual(sKey, "super_secret_key"))
+        {
+            strcopy(gS_AuthKey, sizeof(gS_AuthKey), sKey);
+            gCV_Authentication.SetString("");
+        }
+    }
+
     req.SetHeader("public_ip", sPublicIP);
     req.SetHeader("hostname", sHostname);
     req.SetHeader("auth", gS_AuthKey);
