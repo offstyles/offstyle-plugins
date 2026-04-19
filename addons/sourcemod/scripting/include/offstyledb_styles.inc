@@ -67,7 +67,7 @@ void GetStyleMapping(bool forceRefresh = false)
         }
     }
     else {
-        LogError("[OSdb] configs/shavit-styles.cfg is missing - style mapping cannot be synced. Submissions will be dropped until shavit is installed correctly.");
+        LogMessage("[OSdb] configs/shavit-styles.cfg is missing - style mapping cannot be synced. Submissions will be dropped until shavit is installed correctly.");
         delete hJSONObject;
         delete hHTTPRequest;
         return;
@@ -82,7 +82,7 @@ int ConvertStyle(int style)
 {
     if (gM_StyleMapping == null)
     {
-        LogError("[OSdb] Style mapping is null in ConvertStyle");
+        LogMessage("[OSdb] Style mapping is null in ConvertStyle");
         DebugPrint("ConvertStyle called but style mapping is null");
         return -1;
     }
@@ -113,7 +113,7 @@ void HashStyleConfig()
         File fFile = OpenFile(sPath, "r");
         if (!SHA1File(fFile, hash))
         {
-            LogError("Failed to hash shavit-styles.cfg");
+            LogMessage("Failed to hash shavit-styles.cfg");
             delete fFile;
             return;
         }
@@ -121,7 +121,7 @@ void HashStyleConfig()
         delete fFile;
     }
     else {
-        LogError("[OSdb] Failed to find shavit-styles.cfg");
+        LogMessage("[OSdb] Failed to find shavit-styles.cfg");
         return;
     }
 
@@ -137,7 +137,7 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
         // TODO: retry on a short backoff instead of waiting for the next map
         // change. If a map lasts hours, style submissions stay broken the
         // whole time.
-        LogError("[OSdb] Style mapping fetch failed (status=%d). Keeping any existing mapping; will retry on next map change.", resp.Status);
+        DebugPrint("Style mapping fetch failed (status=%d). Keeping any existing mapping; will retry on next map change.", resp.Status);
         // Invalidate the cached hash so the next OnMapEnd tries again even if
         // shavit-styles.cfg didn't change in between.
         gS_StyleHash[0] = '\0';

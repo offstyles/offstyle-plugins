@@ -73,7 +73,7 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
-        LogError("[OSdb] Bulk verification failed: status = %d, data = null", resp.Status);
+        DebugPrint("Bulk verification failed: status = %d, data = null", resp.Status);
         gB_IsProcessingBatches = false;
         return;
     }
@@ -82,7 +82,7 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
 
     if (!data.HasKey("key_to_send_times"))
     {
-        LogError("[OSdb] Bulk verification response missing 'key_to_send_times' field");
+        DebugPrint("Bulk verification response missing 'key_to_send_times' field");
         delete data;
         gB_IsProcessingBatches = false;
         return;
@@ -143,14 +143,14 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
 {
     if (results == null)
     {
-        LogError("[OSdb] SQL_GetRecords_Callback results are null, SQL error: %s", error);
+        DebugPrint("SQL_GetRecords_Callback results are null, SQL error: %s", error);
         gB_IsProcessingBatches = false;
         return;
     }
 
     if (results.RowCount == 0)
     {
-        LogError("[OSdb] SQL_GetRecords_Callback rowcount is 0");
+        DebugPrint("SQL_GetRecords_Callback rowcount is 0");
         gB_IsProcessingBatches = false;
         return;
     }
@@ -285,10 +285,8 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
 
     if (resp.Status != HTTPStatus_OK)
     {
-        LogError("[OSdb] Batch %d failed to send: status = %d", batchNumber + 1, resp.Status);
         DebugPrint("Batch %d failed with HTTP status %d", batchNumber + 1, resp.Status);
 
-        // Try to extract error message from response
         if (resp.Data != null)
         {
             JSONObject errorData = view_as<JSONObject>(resp.Data);
@@ -296,17 +294,11 @@ public void Callback_OnBatchSent(HTTPResponse resp, any value)
             if (errorData.GetString("error", errorMsg, sizeof(errorMsg)))
             {
                 DebugPrint("Server error message: %s", errorMsg);
-                LogError("[OSdb] Server error: %s", errorMsg);
             }
             if (errorData.GetString("message", errorMsg, sizeof(errorMsg)))
             {
                 DebugPrint("Server message: %s", errorMsg);
-                LogError("[OSdb] Server message: %s", errorMsg);
             }
-        }
-        else
-        {
-            DebugPrint("No response data available");
         }
 
         PrintToServer("[OSdb] Batch %d failed, stopping batch processing.", batchNumber + 1);
