@@ -18,12 +18,9 @@ Before adding the plugin you obviously need a CSS server setup and running the f
 
 #### 1. Download the latest release
 
-Head to [the releases page](https://github.com/offstyles/offstyle-plugins/releases) and download the correct version for your bhoptimer install
+Head to [the releases page](https://github.com/offstyles/offstyle-plugins/releases) and download the latest release — it ships both bhoptimer v3 and v4 builds in the same zip.
 
    To check bhoptimer version quickly, type `sm plugins` in the console while connected to the server and look for plugins with [shavit] infront of their names, the version of these plugins is the bhoptimer version
-   - `v3.x.x` -> download the **v3** plugin
-   - `v4.x.x` -> download the **v4** plugin
-
 
 #### 2. Open server files
 
@@ -33,6 +30,12 @@ Head to [the releases page](https://github.com/offstyles/offstyle-plugins/releas
 
   Unzip the `offstyle-database-vX.X.X.zip` file you downloaded, drag the `addons` folder from it into the `cstrike` folder in the servers directory, it may ask you to replace things, hit yes (this shouldnt cause any issues)
 
-#### 4. Restart server & Update Config
+#### 4. Delete the build you don't need
+
+  Navigate to `cstrike/addons/sourcemod/plugins/` and delete the one that doesn't match your bhoptimer:
+  - `v3.x.x` -> keep `offstyledb_v3.smx`, delete `offstyledb.smx`
+  - `v4.x.x` -> keep `offstyledb.smx`, delete `offstyledb_v3.smx`
+
+#### 5. Restart server & Update Config
 
   Restart the server and head to `cstrike/cfg/sourcemod` and open the `plugin.offstyledb.cfg` file, from here you can set the apikey and configure sending times and sending replays, after setting up the config file you should restart the server again and everything should be good to go
