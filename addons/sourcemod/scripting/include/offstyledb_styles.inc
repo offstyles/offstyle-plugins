@@ -213,41 +213,19 @@ public Action Command_ViewStyleMap(int client, int args)
 
 public Action Command_RefreshMapping(int client, int args)
 {
-    DebugPrint("Command_RefreshMapping called by client %d", client);
-
-    int  iSteamID = GetSteamAccountID(client);
-    bool bAllowed = false;
-
-    DebugPrint("Checking authorization for SteamID %d", iSteamID);
-
-    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
-    {
-        if (iSteamID == gI_SteamIDWhitelist[i])
-        {
-            bAllowed = true;
-            DebugPrint("SteamID %d found in whitelist at index %d", iSteamID, i);
-            break;
-        }
-    }
-
-    if (!bAllowed)
+    if (!IsOSdbAdmin(client))
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to refresh the style mapping.");
-        DebugPrint("SteamID %d not authorized for style mapping refresh", iSteamID);
         return Plugin_Handled;
     }
 
     ReplyToCommand(client, "[OSdb] Refreshing style mapping...");
-    DebugPrint("Starting style mapping refresh");
 
-    // recreate the StringMap if it's null
     if (gM_StyleMapping == null)
     {
         gM_StyleMapping = new StringMap();
-        PrintToServer("[OSdb] Recreated null StringMap handle");
-        DebugPrint("Recreated null StringMap handle");
     }
 
-    GetStyleMapping(true);  // Force refresh
+    GetStyleMapping(true);
     return Plugin_Handled;
 }

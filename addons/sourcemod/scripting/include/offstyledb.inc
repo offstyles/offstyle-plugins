@@ -76,6 +76,26 @@ void DebugPrint(const char[] format, any ...)
     PrintToServer("[OSdb] %s", buffer);
 }
 
+// Gate for all osdb_* admin commands. Server console (client 0) is always
+// allowed; everyone else must be in gI_SteamIDWhitelist.
+bool IsOSdbAdmin(int client)
+{
+    if (client == 0)
+    {
+        return true;
+    }
+
+    int iSteamID = GetSteamAccountID(client);
+    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
+    {
+        if (iSteamID == gI_SteamIDWhitelist[i])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 #include <offstyledb_http>
 #include <offstyledb_styles>
 #include <offstyledb_records>

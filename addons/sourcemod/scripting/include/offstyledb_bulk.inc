@@ -8,27 +8,9 @@
 
 public Action Command_SendAllWRs(int client, int args)
 {
-    DebugPrint("Command_SendAllWRs called by client %d", client);
-
-    int  iSteamID = GetSteamAccountID(client);
-    bool bAllowed = false;
-
-    DebugPrint("Checking authorization for SteamID %d", iSteamID);
-
-    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
-    {
-        if (iSteamID == gI_SteamIDWhitelist[i])
-        {
-            bAllowed = true;
-            DebugPrint("SteamID %d found in whitelist at index %d", iSteamID, i);
-            break;
-        }
-    }
-
-    if (!bAllowed)
+    if (!IsOSdbAdmin(client))
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to fetch the records list.");
-        DebugPrint("SteamID %d not authorized for bulk operations", iSteamID);
         return Plugin_Handled;
     }
 

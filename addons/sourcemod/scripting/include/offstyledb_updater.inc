@@ -219,7 +219,7 @@ bool Updater_ApplyStaged()
 
 public Action Command_CheckUpdate(int client, int args)
 {
-    if (!IsUpdaterAuthorized(client))
+    if (!IsOSdbAdmin(client))
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to run update commands.");
         return Plugin_Handled;
@@ -232,7 +232,7 @@ public Action Command_CheckUpdate(int client, int args)
 
 public Action Command_ApplyUpdate(int client, int args)
 {
-    if (!IsUpdaterAuthorized(client))
+    if (!IsOSdbAdmin(client))
     {
         ReplyToCommand(client, "[OSdb] You are not permitted to run update commands.");
         return Plugin_Handled;
@@ -249,20 +249,3 @@ public Action Command_ApplyUpdate(int client, int args)
     return Plugin_Handled;
 }
 
-bool IsUpdaterAuthorized(int client)
-{
-    if (client == 0)
-    {
-        return true;    // server console
-    }
-
-    int iSteamID = GetSteamAccountID(client);
-    for (int i = 0; i < sizeof(gI_SteamIDWhitelist); i++)
-    {
-        if (iSteamID == gI_SteamIDWhitelist[i])
-        {
-            return true;
-        }
-    }
-    return false;
-}
