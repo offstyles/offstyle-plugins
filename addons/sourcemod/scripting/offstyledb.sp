@@ -526,6 +526,9 @@ public Action Command_RefreshMapping(int client, int args)
 // since OnFinish already deferred non-WR replay_mode=1 submissions to us.
 public Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
 {
+    DebugPrint("[OSdb] ShouldSaveReplayCopy fired: client=%d style=%d time=%f oldtime=%f track=%d isbestreplay=%d istoolong=%d replay_mode=%d",
+               client, style, time, oldtime, track, isbestreplay, istoolong, gCV_ReplayMode.IntValue);
+
     if (gCV_ReplayMode.IntValue != 1 || isbestreplay)
     {
         return Plugin_Continue;
@@ -576,6 +579,9 @@ public Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int
 // Fires after the replay file has been written to disk.
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
 {
+    DebugPrint("[OSdb] OnReplaySaved fired: client=%d style=%d time=%f oldtime=%f track=%d isbestreplay=%d istoolong=%d iscopy=%d path=%s",
+               client, style, time, oldtime, track, isbestreplay, istoolong, iscopy, replaypath);
+
     if (client == 0 || !IsSubmittableFinish(client, track))
     {
         return;
@@ -621,6 +627,7 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 
 public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
 {
+    DebugPrint("[OSdb] OnFinish fired: client=%d style=%d time=%f oldtime=%f track=%d", client, style, time, oldtime, track);
     // oldtime <= time is a filter to prevent non-pbs from being submitted
     // also means times wont submit if they never beat ur pb, like in the case
     // of a skip being removed, but thats up the to server to delete the time
