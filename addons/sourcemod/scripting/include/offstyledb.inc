@@ -87,44 +87,19 @@ public Plugin myinfo =
     name        = "Offstyle Database",
     author      = "shavit (Modified by Jeft & Tommy)",
     description = "Provides Offstyles with a database of bhop records.",
-#if defined SHAVIT_V3
-    version     = PLUGIN_VERSION ... " (shavit v3)",
-#else
-    version     = PLUGIN_VERSION ... " (shavit v4)",
-#endif
+    version     = PLUGIN_VERSION ... SHAVIT_BUILD_LABEL,
     url         = ""
 };
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
-    MarkNativeAsOptional("Shavit_GetWorldRecord");
-    MarkNativeAsOptional("Shavit_OnReplaySaved");
-    MarkNativeAsOptional("OnTimerFinished_Post");
-    MarkNativeAsOptional("Shavit_OnFinish");
-    MarkNativeAsOptional("Shavit_IsPracticeMode");
-    MarkNativeAsOptional("Shavit_IsPaused");
-#if defined SHAVIT_V3
-    MarkNativeAsOptional("Shavit_ShouldSaveReplayCopy");
-#else
-    MarkNativeAsOptional("Shavit_AddAdditionalReplayPathsHere");
-    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
-#endif
-
+    ShavitCompat_MarkOptionalNatives();
     return APLRes_Success;
 }
 
 public void OnPluginStart()
 {
-#if !defined SHAVIT_V3
-    int smv = GetShavitMajorVersion();
-    if (smv < 4) {
-        PrintToServer("[OSdb] smv = %d", smv);
-        SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 build (offstyledb_v3.smx)");
-    } else if (smv >= 5) {
-        // probably needless but future proofing is nice ig
-        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
-    }
-#endif
+    ShavitCompat_OnPluginStart();
 
     RegConsoleCmd("osdb_get_all_wrs", Command_SendAllWRs);
     RegConsoleCmd("osdb_viewmapping", Command_ViewStyleMap);
@@ -145,10 +120,6 @@ public void OnPluginStart()
     sv_cheats       = FindConVar("sv_cheats");
 
     gM_StyleMapping = new StringMap();
-
-#if !defined SHAVIT_V3
-    EnsureTempReplayDir();
-#endif
 
     DebugPrint("[OSdb] OSdb plugin started, commands registered, ConVars created");
 }

@@ -16,204 +16,11 @@ bool IsSubmittableFinish(int client, int track)
         && !Shavit_IsPaused(client);
 }
 
-#if defined SHAVIT_V3
-// v3: requests shavit to save a replay copy for non-WR PBs when replay_mode=1.
-// Also submits the record directly when shavit refuses to save (istoolong),
-// since OnFinish already deferred non-WR replay_mode=1 submissions to us.
-public Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
-{
-    DebugPrint("[OSdb] ShouldSaveReplayCopy fired: client=%d style=%d time=%f oldtime=%f track=%d isbestreplay=%d istoolong=%d replay_mode=%d",
-               client, style, time, oldtime, track, isbestreplay, istoolong, gCV_ReplayMode.IntValue);
-
-    if (gCV_ReplayMode.IntValue != 1 || isbestreplay)
-    {
-        return Plugin_Continue;
-    }
-
-    if (!IsSubmittableFinish(client, track) || oldtime <= time)
-    {
-        return Plugin_Continue;
-    }
-
-    if (gCV_SubmitMode.IntValue == 0)
-    {
-        return Plugin_Continue;
-    }
-
-    float fWR = Shavit_GetWorldRecord(style, track);
-    if (fWR == 0.0 || time <= fWR)
-    {
-        // Actually a WR - handled via shavit's canonical replay path
-        return Plugin_Continue;
-    }
-
-    if (istoolong)
-    {
-        // Shavit won't save a replay for this run, but OnFinish deferred the
-        // submission to us. Submit the record now without a replay attachment.
-        DebugPrint("[OSdb] Non-WR replay too long, submitting record without replay");
-
-        char sMap[64];
-        GetCurrentMap(sMap, sizeof(sMap));
-        GetMapDisplayName(sMap, sMap, sizeof(sMap));
-
-        char sSteamID[32];
-        GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
-
-        char sName[MAX_NAME_LENGTH];
-        GetClientName(client, sName, sizeof(sName));
-
-        SendRecord(sMap, sSteamID, sName, GetTime(), time, sync, strafes, jumps, style, false);
-        return Plugin_Continue;
-    }
-
-    DebugPrint("[OSdb] Requesting non-WR replay copy");
-    return Plugin_Handled;
-}
-#else
-// v4: registers a temp replay path for shavit to save to (normal case), or submits
-// the record directly without a replay when shavit refuses to save (istoolong).
-// OnFinish already deferred. Fires between Shavit_OnFinish and Shavit_OnReplaySaved.
-public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
-{
-    if (gCV_ReplayMode.IntValue != 1 || isbestreplay)
-    {
-        return;
-    }
-
-    if (!IsSubmittableFinish(client, track) || oldtime <= time)
-    {
-        return;
-    }
-
-    if (gCV_SubmitMode.IntValue == 0)
-    {
-        return;
-    }
-
-    float fWR = Shavit_GetWorldRecord(style, track);
-    if (fWR == 0.0 || time <= fWR)
-    {
-        // Actually a WR - handled via shavit's canonical replay path
-        return;
-    }
-
-    if (istoolong)
-    {
-        // Shavit won't save a replay for this run, but OnFinish deferred the
-        // submission to us. Submit the record now without a replay attachment.
-        DebugPrint("[OSdb] Non-WR replay too long, submitting record without replay");
-
-        char sMap[64];
-        GetCurrentMap(sMap, sizeof(sMap));
-        GetMapDisplayName(sMap, sMap, sizeof(sMap));
-
-        char sSteamID[32];
-        GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
-
-        char sName[MAX_NAME_LENGTH];
-        GetClientName(client, sName, sizeof(sName));
-
-        SendRecord(sMap, sSteamID, sName, GetTime(), time, sync, strafes, jumps, style, false);
-        return;
-    }
-
-    char sTempPath[PLATFORM_MAX_PATH];
-    GetTempReplayPath(client, sTempPath, sizeof(sTempPath));
-    Shavit_AlsoSaveReplayTo(sTempPath);
-    DebugPrint("[OSdb] Requesting non-WR replay at %s", sTempPath);
-}
-#endif
-
-// Handles WR submissions, and non-WR submissions when replay_mode=1.
-// Fires after the replay file has been written to disk.
-#if defined SHAVIT_V3
-public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
-#else
-public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
-#endif
-{
-    if (client == 0 || !IsSubmittableFinish(client, track))
-    {
-        return;
-    }
-
-    // Replays disabled: OnFinish submits everything, ignore this forward entirely
-    // so shavit not firing it (e.g. replay saving disabled server-side) never
-    // swallows a time.
-    if (gCV_ReplayMode.IntValue == -1)
-    {
-        return;
-    }
-
-    float fWR = Shavit_GetWorldRecord(style, track);
-    bool  isWR = (fWR == 0.0 || time <= fWR);
-
-#if defined SHAVIT_V3
-    if (iscopy)
-    {
-        // Non-WR replay copy we requested via Shavit_ShouldSaveReplayCopy
-        if (gCV_ReplayMode.IntValue != 1 || gCV_SubmitMode.IntValue == 0 || oldtime <= time || isWR)
-        {
-            CleanupTempReplay(replaypath);
-            return;
-        }
-    }
-    else
-    {
-        // Canonical (WR) save
-        if (!isbestreplay || !isWR)
-        {
-            return;
-        }
-    }
-#else
-    if (isWR != isbestreplay)
-    {
-        // Our registered temp path also triggers this forward with isbestreplay=false;
-        // only proceed when this invocation's WR status matches isbestreplay.
-        return;
-    }
-
-    if (!isWR)
-    {
-        if (gCV_ReplayMode.IntValue != 1 || gCV_SubmitMode.IntValue == 0 || oldtime <= time)
-        {
-            return;
-        }
-    }
-#endif
-
-    DebugPrint("[OSdb] OnReplaySaved submit: isWR=%d submit_mode=%d", isWR, gCV_SubmitMode.IntValue);
-
-    char sMap[64];
-    GetCurrentMap(sMap, sizeof(sMap));
-    GetMapDisplayName(sMap, sMap, sizeof(sMap));
-
-    char sSteamID[32];
-    GetClientAuthId(client, AuthId_Steam3, sSteamID, sizeof(sSteamID));
-
-    char sName[MAX_NAME_LENGTH];
-    GetClientName(client, sName, sizeof(sName));
-
-    int sDate = GetTime();
-
-#if defined SHAVIT_V3
-    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, isWR, replaypath);
-#else
-    char sReplayPath[PLATFORM_MAX_PATH];
-    if (replaypaths != null && replaypaths.Length > 0)
-    {
-        replaypaths.GetString(0, sReplayPath, sizeof(sReplayPath));
-    }
-
-    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, isWR, sReplayPath);
-#endif
-}
-
-public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
+// Called by the shavit compat layer from Shavit_OnFinish.
+void Records_HandleFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime)
 {
     DebugPrint("[OSdb] oldtime = %f newtime = %f", oldtime, time);
+
     // oldtime <= time is a filter to prevent non-pbs from being submitted
     // also means times wont submit if they never beat ur pb, like in the case
     // of a skip being removed, but thats up the to server to delete the time
@@ -222,7 +29,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
         return;
     }
 
-    float fWR = Shavit_GetWorldRecord(style, track);
+    float fWR  = Shavit_GetWorldRecord(style, track);
     bool  isWR = (fWR == 0.0 || time <= fWR);
 
     if (isWR && gCV_ReplayMode.IntValue != -1)
@@ -246,6 +53,104 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
         return;
     }
 
+    SubmitRecordNow(client, style, time, sync, strafes, jumps, isWR, "");
+}
+
+// Called by the shavit compat layer from its pre-save hook
+// (Shavit_ShouldSaveReplayCopy on v3, Shavit_AddAdditionalReplayPathsHere on v4).
+// Returns true if shavit should save a replay we'll later pick up in
+// Shavit_OnReplaySaved. When the replay cannot be saved (istoolong), submits the
+// record directly without a replay and returns false.
+bool Records_ShouldSaveReplay(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, bool isbestreplay, bool istoolong)
+{
+    DebugPrint("[OSdb] ShouldSaveReplay: client=%d style=%d time=%f oldtime=%f track=%d isbestreplay=%d istoolong=%d replay_mode=%d",
+               client, style, time, oldtime, track, isbestreplay, istoolong, gCV_ReplayMode.IntValue);
+
+    if (gCV_ReplayMode.IntValue != 1 || isbestreplay)
+    {
+        return false;
+    }
+
+    if (!IsSubmittableFinish(client, track) || oldtime <= time)
+    {
+        return false;
+    }
+
+    if (gCV_SubmitMode.IntValue == 0)
+    {
+        return false;
+    }
+
+    float fWR = Shavit_GetWorldRecord(style, track);
+    if (fWR == 0.0 || time <= fWR)
+    {
+        // Actually a WR - handled via shavit's canonical replay path
+        return false;
+    }
+
+    if (istoolong)
+    {
+        // Shavit won't save a replay for this run, but OnFinish deferred the
+        // submission to us. Submit the record now without a replay attachment.
+        DebugPrint("[OSdb] Non-WR replay too long, submitting record without replay");
+        SubmitRecordNow(client, style, time, sync, strafes, jumps, false, "");
+        return false;
+    }
+
+    DebugPrint("[OSdb] Requesting non-WR replay copy");
+    return true;
+}
+
+// Called by the shavit compat layer from Shavit_OnReplaySaved.
+// isOurCopy indicates the replay was saved at a path we asked for (non-WR copy).
+// Callers must have already filtered out foreign saves (e.g. another plugin's
+// additional-path registrations).
+void Records_HandleReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, bool isbestreplay, const char[] replayPath, bool isOurCopy)
+{
+    if (client == 0 || !IsSubmittableFinish(client, track))
+    {
+        return;
+    }
+
+    // Replays disabled: OnFinish submits everything, ignore this forward entirely
+    // so shavit not firing it (e.g. replay saving disabled server-side) never
+    // swallows a time.
+    if (gCV_ReplayMode.IntValue == -1)
+    {
+        return;
+    }
+
+    float fWR  = Shavit_GetWorldRecord(style, track);
+    bool  isWR = (fWR == 0.0 || time <= fWR);
+
+    if (isOurCopy)
+    {
+        // Non-WR replay copy we requested via the shavit compat layer.
+        if (gCV_ReplayMode.IntValue != 1 || gCV_SubmitMode.IntValue == 0 || oldtime <= time || isWR)
+        {
+            CleanupTempReplay(replayPath);
+            return;
+        }
+    }
+    else
+    {
+        // Canonical (WR) save.
+        if (!isbestreplay || !isWR)
+        {
+            return;
+        }
+    }
+
+    DebugPrint("[OSdb] OnReplaySaved submit: isWR=%d submit_mode=%d", isWR, gCV_SubmitMode.IntValue);
+
+    SubmitRecordNow(client, style, time, sync, strafes, jumps, isWR, replayPath);
+}
+
+// Collects client context (map name, steamid, name, date) and dispatches the
+// HTTP submission via SendRecord. Factored out so the OnFinish, OnReplaySaved,
+// and istoolong code paths share one call shape.
+void SubmitRecordNow(int client, int style, float time, float sync, int strafes, int jumps, bool isWR, const char[] replayPath)
+{
     char sMap[64];
     GetCurrentMap(sMap, sizeof(sMap));
     GetMapDisplayName(sMap, sMap, sizeof(sMap));
@@ -256,9 +161,7 @@ public void Shavit_OnFinish(int client, int style, float time, int jumps, int st
     char sName[MAX_NAME_LENGTH];
     GetClientName(client, sName, sizeof(sName));
 
-    int sDate = GetTime();
-
-    SendRecord(sMap, sSteamID, sName, sDate, time, sync, strafes, jumps, style, isWR);
+    SendRecord(sMap, sSteamID, sName, GetTime(), time, sync, strafes, jumps, style, isWR, replayPath);
 }
 
 void SendRecord(char[] sMap, char[] sSteamID, char[] sName, int sDate, float time, float sync, int strafes, int jumps, int style, bool isWR, const char[] replayPath = "")

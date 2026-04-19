@@ -60,18 +60,12 @@ stock void GetTimerSQLPrefix(char[] buffer, int maxlen)
 
     delete fFile;
 }
+
+ #define SHAVIT_BUILD_LABEL " (shavit v3)"
 #else
 #undef REQUIRE_PLUGIN
 #include <shavit>
-#endif
-
-#if !defined SHAVIT_V3
-int GetShavitMajorVersion()
-{
-    int major = SHAVIT_VERSION_MAJOR;
-
-    return major;
-}
+ #define SHAVIT_BUILD_LABEL " (shavit v4)"
 #endif
 
 // v4 writes its non-WR replay copies to a temp path we manage; v3 lets shavit
@@ -86,6 +80,13 @@ bool IsTempReplayPath(const char[] path)
 }
 
 #if !defined SHAVIT_V3
+int GetShavitMajorVersion()
+{
+    int major = SHAVIT_VERSION_MAJOR;
+
+    return major;
+}
+
 void GetTempReplayPath(int client, char[] buffer, int maxlen)
 {
     BuildPath(Path_SM, buffer, maxlen, "data/osdb_tmp/%d_%d.replay", client, GetTime());
@@ -132,5 +133,105 @@ void EnsureTempReplayDir()
     {
         DebugPrint("[OSdb] Swept %d orphan temp replays", swept);
     }
+}
+#endif
+
+// --- Compat helpers called from offstyledb.inc's plugin lifecycle hooks ---
+
+void ShavitCompat_MarkOptionalNatives()
+{
+    MarkNativeAsOptional("Shavit_GetWorldRecord");
+    MarkNativeAsOptional("Shavit_OnReplaySaved");
+    MarkNativeAsOptional("OnTimerFinished_Post");
+    MarkNativeAsOptional("Shavit_OnFinish");
+    MarkNativeAsOptional("Shavit_IsPracticeMode");
+    MarkNativeAsOptional("Shavit_IsPaused");
+#if defined SHAVIT_V3
+    MarkNativeAsOptional("Shavit_ShouldSaveReplayCopy");
+#else
+    MarkNativeAsOptional("Shavit_AddAdditionalReplayPathsHere");
+    MarkNativeAsOptional("Shavit_AlsoSaveReplayTo");
+#endif
+}
+
+void ShavitCompat_OnPluginStart()
+{
+#if !defined SHAVIT_V3
+    int smv = GetShavitMajorVersion();
+    if (smv < 4)
+    {
+        PrintToServer("[OSdb] smv = %d", smv);
+        SetFailState("[OSdb] bhoptimer version <4 detected, use the v3 build (offstyledb_v3.smx)");
+    }
+    else if (smv >= 5)
+    {
+        // probably needless but future proofing is nice ig
+        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+    }
+
+    EnsureTempReplayDir();
+#endif
+}
+
+// --- Shavit forwards: thin adapters delegating to the records layer ---
+
+public void Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp)
+{
+    Records_HandleFinish(client, style, time, jumps, strafes, sync, track, oldtime);
+}
+
+#if defined SHAVIT_V3
+// v3: we return Plugin_Handled to ask shavit to save a /copy/ of the replay.
+public Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
+{
+    return Records_ShouldSaveReplay(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, istoolong)
+        ? Plugin_Handled
+        : Plugin_Continue;
+}
+
+public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath)
+{
+    // Ignore saves that are neither our requested copy nor shavit's canonical save.
+    if (!iscopy && !isbestreplay)
+    {
+        return;
+    }
+
+    Records_HandleReplaySaved(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, replaypath, iscopy);
+}
+#else
+// v4: we register a temp path via Shavit_AlsoSaveReplayTo, and shavit calls us back
+// with the saved file in Shavit_OnReplaySaved.
+public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong)
+{
+    if (!Records_ShouldSaveReplay(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, istoolong))
+    {
+        return;
+    }
+
+    char sTempPath[PLATFORM_MAX_PATH];
+    GetTempReplayPath(client, sTempPath, sizeof(sTempPath));
+    Shavit_AlsoSaveReplayTo(sTempPath);
+    DebugPrint("[OSdb] Requesting non-WR replay at %s", sTempPath);
+}
+
+public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
+{
+    char replayPath[PLATFORM_MAX_PATH];
+    if (replaypaths != null && replaypaths.Length > 0)
+    {
+        replaypaths.GetString(0, replayPath, sizeof(replayPath));
+    }
+
+    // A non-canonical save (isbestreplay=false) is ours only if the path lives in
+    // our temp dir - other plugins may register their own extra replay paths too.
+    bool isOurCopy = !isbestreplay && replayPath[0] != '\0' && IsTempReplayPath(replayPath);
+
+    if (!isbestreplay && !isOurCopy)
+    {
+        return;
+    }
+
+    Records_HandleReplaySaved(client, style, time, jumps, strafes, sync, track, oldtime, isbestreplay, replayPath, isOurCopy);
 }
 #endif
