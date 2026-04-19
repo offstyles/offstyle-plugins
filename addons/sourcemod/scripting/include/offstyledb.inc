@@ -11,6 +11,8 @@
 
 #include <offstyledb_shavit>
 
+// TODO: 100MB is reserved unconditionally for bulk JSON payloads. If bulk
+// ever switches to streaming/paging, shrink this.
 #pragma dynamic 104857600
 #pragma newdecls required
 #pragma semicolon 1
@@ -173,6 +175,11 @@ public void OnAllPluginsLoaded()
 
 public void OnConfigsExecuted()
 {
+    // TODO: we read the key once and blank the ConVar so it doesn't leak via
+    // sm_cvar. The strlen guard makes a plugin reload re-read correctly
+    // (since we blanked the ConVar after), but the interaction is subtle -
+    // worth replacing with a proper secret-loading path (env var / sealed
+    // file) if one appears.
     if (strlen(gS_AuthKey) == 0)
     {
         gCV_Authentication.GetString(gS_AuthKey, sizeof(gS_AuthKey));
