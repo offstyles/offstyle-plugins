@@ -112,7 +112,7 @@ int       gI_BatchSize = 5000;
 ConVar    gCV_ExtendedDebugging = null;
 ConVar    gCV_SubmitMode = null;         // 0=WRs only, 1=all times (default)
 ConVar    gCV_BulkUploadMode = null;     // -1=no times, 0=WRs only (default), 1=all times  
-ConVar    gCV_ReplayMode = null;         // -1=never, 0=WRs only (default), 1=all times
+ConVar    gCV_ReplayMode = null;         // -1=never, 0=WRs only, 1=all times (default)
 
 // Helper function for debug logging
 void DebugPrint(const char[] format, any ...)
@@ -258,7 +258,7 @@ public void OnPluginStart()
     gCV_ExtendedDebugging = new Convar("OSdb_extended_debugging", "0", "Use extensive debugging messages?", 0, true, 0.0, true, 1.0);
     gCV_SubmitMode = new Convar("OSdb_submit_mode", "1", "Submit only WRs (0) or all times (1)?", 0, true, 0.0, true, 1.0);
     gCV_BulkUploadMode = new Convar("OSdb_bulk_upload_mode", "0", "Bulk upload (database time sync): no times (-1), only WRs (0), or all times (1)?", 0, true, -1.0, true, 1.0);
-    gCV_ReplayMode = new Convar("OSdb_replay_mode", "0", "Replay attachment: never (-1), WRs only (0), or all times (1)?", 0, true, -1.0, true, 1.0);
+    gCV_ReplayMode = new Convar("OSdb_replay_mode", "1", "Replay attachment: never (-1), WRs only (0), or all times (1, default)?", 0, true, -1.0, true, 1.0);
     gCV_PublicIP       = new Convar("OSdb_public_ip", "127.0.0.1", "Input the IP:PORT of the game server here. It will be used to identify the game server.", 0);
     gCV_Authentication = new Convar("OSdb_private_key", "super_secret_key", "Fill in your Offstyles Database API access key here. This key can be used to submit records to the database using your server key - abuse will lead to removal.", 0);
 
