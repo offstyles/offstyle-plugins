@@ -59,11 +59,11 @@ void Updater_CheckForUpdate(bool silent)
         {
             PrintToServer("[OSdb] An update check is already in progress.");
         }
-        DebugPrint("[OSdb] Skipping update check, one is already in flight");
+        DebugPrint("Skipping update check, one is already in flight");
         return;
     }
 
-    DebugPrint("[OSdb] Checking for updates (silent=%s, current=%s)", silent ? "true" : "false", PLUGIN_VERSION);
+    DebugPrint("Checking for updates (silent=%s, current=%s)", silent ? "true" : "false", PLUGIN_VERSION);
 
     gB_UpdateInFlight = true;
 
@@ -101,7 +101,7 @@ public void Callback_OnLatestRelease(HTTPResponse resp, any value)
     int  tagOffset = (tag[0] == 'v' || tag[0] == 'V') ? 1 : 0;
     bool newer    = !StrEqual(tag[tagOffset], PLUGIN_VERSION);
 
-    DebugPrint("[OSdb] Latest release tag: %s (current: %s)", tag, PLUGIN_VERSION);
+    DebugPrint("Latest release tag: %s (current: %s)", tag, PLUGIN_VERSION);
 
     if (!newer)
     {
@@ -157,7 +157,7 @@ public void Callback_OnLatestRelease(HTTPResponse resp, any value)
         return;
     }
 
-    DebugPrint("[OSdb] Downloading %s from %s", UPDATER_SMX_NAME, downloadUrl);
+    DebugPrint("Downloading %s from %s", UPDATER_SMX_NAME, downloadUrl);
 
     char stagePath[PLATFORM_MAX_PATH];
     BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/" ... UPDATER_SMX_NAME ... ".new");

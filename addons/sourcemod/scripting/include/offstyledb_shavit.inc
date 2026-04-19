@@ -100,7 +100,7 @@ void EnsureTempReplayDir()
     if (!DirExists(sDir))
     {
         CreateDirectory(sDir, 511);
-        DebugPrint("[OSdb] Created temp replay directory: %s", sDir);
+        DebugPrint("Created temp replay directory: %s", sDir);
         return;
     }
 
@@ -131,7 +131,7 @@ void EnsureTempReplayDir()
 
     if (swept > 0)
     {
-        DebugPrint("[OSdb] Swept %d orphan temp replays", swept);
+        DebugPrint("Swept %d orphan temp replays", swept);
     }
 }
 #endif
@@ -166,7 +166,7 @@ void ShavitCompat_OnPluginStart()
     else if (smv >= 5)
     {
         // probably needless but future proofing is nice ig
-        DebugPrint("[OSdb] bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
+        DebugPrint("bhoptimer version >4 detected, there may be compatibility issues, check for update here https://github.com/offstyles/offstyle-plugins/releases");
     }
 
     EnsureTempReplayDir();
@@ -210,7 +210,7 @@ public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float tim
     char sTempPath[PLATFORM_MAX_PATH];
     GetTempReplayPath(client, sTempPath, sizeof(sTempPath));
     Shavit_AlsoSaveReplayTo(sTempPath);
-    DebugPrint("[OSdb] Requesting non-WR replay at %s", sTempPath);
+    DebugPrint("Requesting non-WR replay at %s", sTempPath);
 }
 
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)

@@ -23,7 +23,7 @@ void AddHeaders(HTTPRequest req)
 
     if (gB_IsProcessingBatches && strlen(gS_BulkCode) > 0)
     {
-        DebugPrint("[OSdb] Adding bulk_verify header: %s", gS_BulkCode);
+        DebugPrint("Adding bulk_verify header: %s", gS_BulkCode);
         req.SetHeader("bulk_verify", gS_BulkCode);
     }
 }

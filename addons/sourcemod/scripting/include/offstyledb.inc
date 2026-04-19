@@ -73,7 +73,7 @@ void DebugPrint(const char[] format, any ...)
 
     char buffer[512];
     VFormat(buffer, sizeof(buffer), format, 2);
-    PrintToServer("[OSdb Debug] %s", buffer);
+    PrintToServer("[OSdb] %s", buffer);
 }
 
 #include <offstyledb_http>
@@ -121,7 +121,7 @@ public void OnPluginStart()
 
     gM_StyleMapping = new StringMap();
 
-    DebugPrint("[OSdb] OSdb plugin started, commands registered, ConVars created");
+    DebugPrint("OSdb plugin started, commands registered, ConVars created");
 }
 
 public void OnAllPluginsLoaded()
@@ -167,32 +167,32 @@ public void OnMapStart()
 {
     char sMapName[256];
     GetCurrentMap(sMapName, sizeof(sMapName));
-    DebugPrint("[OSdb] Map started: %s", sMapName);
+    DebugPrint("Map started: %s", sMapName);
 
     gI_Tickrate = RoundToZero(1.0 / GetTickInterval());
-    DebugPrint("[OSdb] Tickrate calculated: %d", gI_Tickrate);
+    DebugPrint("Tickrate calculated: %d", gI_Tickrate);
 }
 
 public void OnMapEnd()
 {
-    DebugPrint("[OSdb] Map ending, requesting style mapping");
+    DebugPrint("Map ending, requesting style mapping");
     GetStyleMapping();
 }
 
 public void OnPluginEnd()
 {
-    DebugPrint("[OSdb] Plugin shutting down, cleaning up resources");
+    DebugPrint("Plugin shutting down, cleaning up resources");
 
     if (gA_AllRecords != null)
     {
-        DebugPrint("[OSdb] Cleaning up AllRecords ArrayList");
+        DebugPrint("Cleaning up AllRecords ArrayList");
         delete gA_AllRecords;
         gA_AllRecords = null;
     }
 
     if (gM_StyleMapping != null)
     {
-        DebugPrint("[OSdb] Cleaning up StyleMapping StringMap");
+        DebugPrint("Cleaning up StyleMapping StringMap");
         delete gM_StyleMapping;
         gM_StyleMapping = null;
     }
