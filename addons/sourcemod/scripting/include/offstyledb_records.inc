@@ -91,6 +91,11 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
         return;
     }
 
+    // TODO: overwrite race - if player A stashed an intent, disconnected,
+    // player B took the slot and finished all before A's replay save fired,
+    // A's replay would dispatch B's intent. Requires B to complete a full
+    // map run in <100ms so practically impossible, but a steamid check
+    // before dispatch would close it.
     gPending[client] = intent;
     DebugPrint("Stashed intent for client %d (isWR=%d)", client, isWR);
 }

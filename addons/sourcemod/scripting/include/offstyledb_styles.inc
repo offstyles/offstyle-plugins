@@ -6,6 +6,9 @@
 #pragma newdecls required
 #pragma semicolon 1
 
+// TODO: shavit-styles.cfg is opened twice per call - once for HashStyleConfig
+// and again below for the base64-encode + POST. Read once, hash the buffer,
+// encode the buffer.
 void GetStyleMapping(bool forceRefresh = false)
 {
     DebugPrint("Starting style mapping request (forceRefresh: %s)", forceRefresh ? "true" : "false");
@@ -131,6 +134,9 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
+        // TODO: retry on a short backoff instead of waiting for the next map
+        // change. If a map lasts hours, style submissions stay broken the
+        // whole time.
         LogError("[OSdb] Style mapping fetch failed (status=%d). Keeping any existing mapping; will retry on next map change.", resp.Status);
         // Invalidate the cached hash so the next OnMapEnd tries again even if
         // shavit-styles.cfg didn't change in between.

@@ -17,12 +17,15 @@ public Action Command_SendAllWRs(int client, int args)
     if (gB_IsProcessingBatches)
     {
         ReplyToCommand(client, "[OSdb] Already processing batches. Please wait for current operation to complete.");
-        DebugPrint("Bulk operation request denied - already processing batches");
         return Plugin_Handled;
     }
 
+    // Flag immediately so a second osdb_get_all_wrs call doesn't slip through
+    // the guard while /bulk_verification and the SQL query are in flight.
+    // Every failure path below clears this back to false.
+    gB_IsProcessingBatches = true;
+
     ReplyToCommand(client, "[OSdb] Requesting bulk verification...");
-    DebugPrint("Starting bulk verification request");
     RequestBulkVerification();
 
     return Plugin_Handled;
@@ -71,19 +74,17 @@ public void Callback_OnBulkVerification(HTTPResponse resp, any value)
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
         LogError("[OSdb] Bulk verification failed: status = %d, data = null", resp.Status);
-        DebugPrint("Bulk verification failed with status %d", resp.Status);
+        gB_IsProcessingBatches = false;
         return;
     }
-
-    DebugPrint("Bulk verification response received successfully");
 
     JSONObject data = view_as<JSONObject>(resp.Data);
 
     if (!data.HasKey("key_to_send_times"))
     {
         LogError("[OSdb] Bulk verification response missing 'key_to_send_times' field");
-        DebugPrint("Bulk verification response missing required field");
         delete data;
+        gB_IsProcessingBatches = false;
         return;
     }
 
@@ -106,7 +107,7 @@ void SendRecordDatabase()
     if (bulkMode == -1)
     {
         PrintToServer("[OSdb] Bulk upload disabled (mode = -1), skipping record collection");
-        DebugPrint("Bulk upload skipped due to mode = -1");
+        gB_IsProcessingBatches = false;
         return;
     }
 
@@ -143,16 +144,17 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
     if (results == null)
     {
         LogError("[OSdb] SQL_GetRecords_Callback results are null, SQL error: %s", error);
+        gB_IsProcessingBatches = false;
         return;
     }
 
     if (results.RowCount == 0)
     {
         LogError("[OSdb] SQL_GetRecords_Callback rowcount is 0");
+        gB_IsProcessingBatches = false;
         return;
     }
 
-    gB_IsProcessingBatches = true;
     gI_CurrentBatch = 0;
     gI_TotalRecords = 0;
 
