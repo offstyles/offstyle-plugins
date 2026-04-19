@@ -14,7 +14,6 @@ native bool   Shavit_IsPaused(int client);
 forward void   Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, bool iscopy, const char[] replaypath);
 forward void   Shavit_OnFinish(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp);
 forward Action Shavit_ShouldSaveReplayCopy(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong);
-forward void   OnTimerFinished_Post(int client, float Time, int Type, int Style, bool tas, bool NewTime, int OldPosition, int NewPosition);
 
 // stocks from shavit.inc (v3 doesn't ship the helpers we use)
 stock Database GetTimerDatabaseHandle()
@@ -142,7 +141,6 @@ void ShavitCompat_MarkOptionalNatives()
 {
     MarkNativeAsOptional("Shavit_GetWorldRecord");
     MarkNativeAsOptional("Shavit_OnReplaySaved");
-    MarkNativeAsOptional("OnTimerFinished_Post");
     MarkNativeAsOptional("Shavit_OnFinish");
     MarkNativeAsOptional("Shavit_IsPracticeMode");
     MarkNativeAsOptional("Shavit_IsPaused");

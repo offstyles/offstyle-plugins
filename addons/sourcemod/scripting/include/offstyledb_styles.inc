@@ -143,26 +143,20 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
     JSONObject data = view_as<JSONObject>(resp.Data);
     char       s_Data[512];
     data.GetString("data", s_Data, sizeof(s_Data));
-    // dont think we need to do it here, but doing it anyway
     delete data;
 
     DebugPrint("Style mapping data extracted: %s", s_Data);
 
-    // check if StringMap is still valid FUCKING INVALID HANDLE
     if (gM_StyleMapping == null)
     {
-        LogError("[OSdb] Style mapping handle is null, recreating...");
-        DebugPrint("Style mapping handle was null, recreating");
         gM_StyleMapping = new StringMap();
     }
-
-    if (gM_StyleMapping.Size > 0)
+    else if (gM_StyleMapping.Size > 0)
     {
-        DebugPrint("Clearing existing style mapping (%d entries)", gM_StyleMapping.Size);
         gM_StyleMapping.Clear();
     }
 
-    const int MAX_STYLES = 512;    // fucking Hope people arent adding this many....
+    const int MAX_STYLES = 512;
     char      parts[MAX_STYLES][8];
 
     int       count = ExplodeString(s_Data, ",", parts, sizeof(parts), sizeof(parts[]));

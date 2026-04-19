@@ -188,16 +188,11 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     char sSteamID[32];
     results.FetchString(1, sSteamID, sizeof(sSteamID));
 
-    switch (gI_TimerVersion)
+    // Shavit stores the auth column in the compact Steam2 form; the API expects
+    // Steam3. Wrap bare account IDs in [u:1:...].
+    if (StrContains(sSteamID, "[U:1:]", false) == -1)
     {
-        // we dont Really need to do this switch case shit anymore, but whatever
-        case TimerVersion_shavit:
-        {
-            if (StrContains(sSteamID, "[U:1:]", false) == -1)
-            {
-                Format(sSteamID, sizeof(sSteamID), "[u:1:%s]", sSteamID);
-            }
-        }
+        Format(sSteamID, sizeof(sSteamID), "[u:1:%s]", sSteamID);
     }
 
     char sName[MAX_NAME_LENGTH];
