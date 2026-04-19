@@ -47,9 +47,16 @@ void Records_HandleFinish(int client, int style, float time, int jumps, int stra
 
     DebugPrint("[OSdb] OnFinish: client=%d style=%d time=%f oldtime=%f track=%d", client, style, time, oldtime, track);
 
-    // oldtime <= time filters non-PB runs (e.g. when a skip got removed).
-    if (!IsSubmittableFinish(client, track) || oldtime <= time)
+    if (!IsSubmittableFinish(client, track))
     {
+        return;
+    }
+
+    // Non-PB filter: drop runs that don't beat the player's prior PB. oldtime=0
+    // means no prior PB (first-time finish on this style), which should submit.
+    if (oldtime != 0.0 && time >= oldtime)
+    {
+        DebugPrint("[OSdb] Dropping non-PB (time=%f >= oldtime=%f)", time, oldtime);
         return;
     }
 
