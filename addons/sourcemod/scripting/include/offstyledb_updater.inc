@@ -79,7 +79,7 @@ public void Callback_OnLatestRelease(HTTPResponse resp, any value)
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
-        LogError("[OSdb] Update check failed: status = %d", resp.Status);
+        DebugPrint("Update check failed: status = %d", resp.Status);
         gB_UpdateInFlight = false;
         return;
     }
@@ -89,7 +89,7 @@ public void Callback_OnLatestRelease(HTTPResponse resp, any value)
 
     if (!data.GetString("tag_name", tag, sizeof(tag)))
     {
-        LogError("[OSdb] Update check: response missing tag_name");
+        DebugPrint("Update check: response missing tag_name");
         delete data;
         gB_UpdateInFlight = false;
         return;
@@ -152,7 +152,7 @@ public void Callback_OnLatestRelease(HTTPResponse resp, any value)
 
     if (downloadUrl[0] == '\0')
     {
-        LogError("[OSdb] Update check: no %s asset in release %s. Update manually: https://github.com/offstyles/offstyle-plugins/releases/tag/%s", UPDATER_SMX_NAME, tag, tag);
+        DebugPrint("Update check: no %s asset in release %s", UPDATER_SMX_NAME, tag);
         gB_UpdateInFlight = false;
         return;
     }
@@ -173,7 +173,7 @@ public void Callback_OnSMXDownloaded(HTTPStatus status, any value)
 
     if (status != HTTPStatus_OK)
     {
-        LogError("[OSdb] Update download failed with status %d", status);
+        DebugPrint("Update download failed with status %d", status);
         gS_LatestTag[0] = '\0';
         return;
     }
@@ -194,19 +194,19 @@ bool Updater_ApplyStaged()
 
     if (!FileExists(stagePath))
     {
-        LogError("[OSdb] Apply update: staged file %s is missing", stagePath);
+        LogMessage("[OSdb] Apply update: staged file %s is missing", stagePath);
         return false;
     }
 
     if (FileExists(livePath) && !DeleteFile(livePath))
     {
-        LogError("[OSdb] Apply update failed: could not delete %s", livePath);
+        LogMessage("[OSdb] Apply update failed: could not delete %s", livePath);
         return false;
     }
 
     if (!RenameFile(livePath, stagePath))
     {
-        LogError("[OSdb] Apply update failed: RenameFile %s -> %s", stagePath, livePath);
+        LogMessage("[OSdb] Apply update failed: RenameFile %s -> %s", stagePath, livePath);
         return false;
     }
 
@@ -265,7 +265,7 @@ void Updater_CheckBuildMatch()
     }
 
     gB_BuildMismatch = true;
-    LogError("[OSdb] This is the shavit v%d build but the server is running shavit v%d. Records will not submit until the correct build is installed.", built, running);
+    LogMessage("[OSdb] This is the shavit v%d build but the server is running shavit v%d. Records will not submit until the correct build is installed.", built, running);
 
     int mode = gCV_AutoUpdate.IntValue;
     if (mode == 0)
@@ -305,7 +305,7 @@ public void Callback_OnSwitchReleaseInfo(HTTPResponse resp, any value)
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
-        LogError("[OSdb] Build-switch: GitHub API failed (status=%d)", resp.Status);
+        DebugPrint("Build-switch: GitHub API failed (status=%d)", resp.Status);
         gB_UpdateInFlight = false;
         return;
     }
@@ -341,7 +341,7 @@ public void Callback_OnSwitchReleaseInfo(HTTPResponse resp, any value)
 
     if (downloadUrl[0] == '\0')
     {
-        LogError("[OSdb] Build-switch: no %s asset in the latest release.", targetSmx);
+        DebugPrint("Build-switch: no %s asset in the latest release", targetSmx);
         gB_UpdateInFlight = false;
         return;
     }
@@ -361,7 +361,7 @@ public void Callback_OnSwitchDownloaded(HTTPStatus status, any value)
 
     if (status != HTTPStatus_OK)
     {
-        LogError("[OSdb] Build-switch download failed (status=%d)", status);
+        DebugPrint("Build-switch download failed (status=%d)", status);
         return;
     }
 
@@ -377,13 +377,13 @@ public void Callback_OnSwitchDownloaded(HTTPStatus status, any value)
 
     if (FileExists(livePath) && !DeleteFile(livePath))
     {
-        LogError("[OSdb] Build-switch: could not delete %s - install manually.", livePath);
+        LogMessage("[OSdb] Build-switch: could not delete %s - install manually.", livePath);
         return;
     }
 
     if (!RenameFile(livePath, stagePath))
     {
-        LogError("[OSdb] Build-switch: rename %s -> %s failed.", stagePath, livePath);
+        LogMessage("[OSdb] Build-switch: rename %s -> %s failed.", stagePath, livePath);
         return;
     }
 
@@ -397,7 +397,7 @@ public void Callback_OnSwitchDownloaded(HTTPStatus status, any value)
     BuildPath(Path_SM, ownPath, sizeof(ownPath), "plugins/" ... UPDATER_SMX_NAME);
     if (FileExists(ownPath) && !DeleteFile(ownPath))
     {
-        LogError("[OSdb] Build-switch: could not delete own .smx at %s - please remove manually.", ownPath);
+        LogMessage("[OSdb] Build-switch: could not delete own .smx at %s - please remove manually.", ownPath);
     }
 
     char cmd[128];

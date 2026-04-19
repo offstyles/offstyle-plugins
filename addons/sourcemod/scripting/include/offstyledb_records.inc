@@ -209,8 +209,8 @@ void DispatchSubmission(SubmissionIntent intent, const char[] replayPath)
 
     if (sv_cheats.BoolValue)
     {
-        LogError("[OSdb] Attempted to submit record with sv_cheats enabled. map=%s steamid=%s time=%f",
-                 intent.map, intent.steamId, intent.time);
+        DebugPrint("sv_cheats enabled, dropping submission: map=%s steamid=%s time=%f",
+                   intent.map, intent.steamId, intent.time);
         CleanupTempReplay(replayPath);
         return;
     }
@@ -218,8 +218,8 @@ void DispatchSubmission(SubmissionIntent intent, const char[] replayPath)
     int mappedStyle = ConvertStyle(intent.rawStyle);
     if (mappedStyle == -1)
     {
-        LogError("[OSdb] Style %d has no remote mapping - submission dropped for %s on %s (time=%f). Check the style mapping on the API server.",
-                 intent.rawStyle, intent.steamId, intent.map, intent.time);
+        DebugPrint("Style %d has no remote mapping, dropping submission for %s on %s (time=%f)",
+                   intent.rawStyle, intent.steamId, intent.map, intent.time);
         CleanupTempReplay(replayPath);
         return;
     }
@@ -293,14 +293,14 @@ public void OnRecordSubmitted(HTTPResponse resp, any value, const char[] error)
 
     if (error[0] != '\0')
     {
-        LogError("[OSdb] Record submission failed: %s", error);
+        DebugPrint("Record submission failed: %s", error);
         CleanupTempReplay(replayPath);
         return;
     }
 
     if (resp.Status != HTTPStatus_OK && resp.Status != HTTPStatus_Created)
     {
-        LogError("[OSdb] Record submission failed with status %d", resp.Status);
+        DebugPrint("Record submission failed with status %d", resp.Status);
         CleanupTempReplay(replayPath);
         return;
     }
@@ -335,7 +335,7 @@ public void OnReplayUploaded(HTTPStatus status, any value)
 
     if (status != HTTPStatus_OK)
     {
-        LogError("[OSdb] Replay upload failed with status %d", status);
+        DebugPrint("Replay upload failed with status %d", status);
     }
 
     CleanupTempReplay(replayPath);
