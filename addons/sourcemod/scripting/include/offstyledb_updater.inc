@@ -257,6 +257,8 @@ void Updater_CheckBuildMatch()
     int running = ShavitCompat_DetectRunningVersion();
     int built   = ShavitCompat_BuildVersion();
 
+    PrintToServer("[OSdb] Build-match check: installed=v%d build, running=shavit v%d", built, running);
+
     if (running == built)
     {
         return;
