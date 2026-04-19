@@ -64,7 +64,9 @@ void GetStyleMapping(bool forceRefresh = false)
         }
     }
     else {
-        SetFailState("Couldnt find configs/shavit-styles.cfg");
+        LogError("[OSdb] configs/shavit-styles.cfg is missing - style mapping cannot be synced. Submissions will be dropped until shavit is installed correctly.");
+        delete hJSONObject;
+        delete hHTTPRequest;
         return;
     }
 
@@ -129,9 +131,10 @@ public void Callback_OnStyleMapping(HTTPResponse resp, any value)
 
     if (resp.Status != HTTPStatus_OK || resp.Data == null)
     {
-        LogError("[OSdb] Style Mapping failed: status = %d, data = null", resp.Status);
-        DebugPrint("Style mapping failed with status %d", resp.Status);
-        SetFailState("[OSdb] Style Mapping returned non-ok response");
+        LogError("[OSdb] Style mapping fetch failed (status=%d). Keeping any existing mapping; will retry on next map change.", resp.Status);
+        // Invalidate the cached hash so the next OnMapEnd tries again even if
+        // shavit-styles.cfg didn't change in between.
+        gS_StyleHash[0] = '\0';
         return;
     }
 
