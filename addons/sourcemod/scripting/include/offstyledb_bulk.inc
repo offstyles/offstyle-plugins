@@ -160,6 +160,11 @@ public void SQL_GetRecords_Callback(Database db, DBResultSet results, const char
 
     if (gA_AllRecords != null)
     {
+        for (int i = 0; i < gA_AllRecords.Length; i++)
+        {
+            JSONObject hJSON = view_as<JSONObject>(gA_AllRecords.Get(i));
+            delete hJSON;
+        }
         delete gA_AllRecords;
     }
     gA_AllRecords = new ArrayList();
@@ -190,12 +195,9 @@ JSONObject GetTimeJsonFromResult(DBResultSet results)
     char sSteamID[32];
     results.FetchString(1, sSteamID, sizeof(sSteamID));
 
-    // Shavit stores the auth column in the compact Steam2 form; the API expects
-    // Steam3. Wrap bare account IDs in [u:1:...].
-    if (StrContains(sSteamID, "[U:1:]", false) == -1)
-    {
-        Format(sSteamID, sizeof(sSteamID), "[u:1:%s]", sSteamID);
-    }
+    // Shavit stores auth as an INT account ID; API expects Steam3 form. Match the
+    // casing AuthId_Steam3 uses for single submissions so both paths key identically.
+    Format(sSteamID, sizeof(sSteamID), "[U:1:%s]", sSteamID);
 
     char sName[MAX_NAME_LENGTH];
     results.FetchString(2, sName, MAX_NAME_LENGTH);
@@ -260,17 +262,15 @@ void ProcessNextBatch()
     AddHeaders(hHTTPRequest);
     hHTTPRequest.SetHeader("bulk_verify", gS_BulkCode);
 
-    JSONObject hRecordsList = new JSONObject();
-    hRecordsList.Set("records", hArray);
-
     DataPack pack = new DataPack();
     pack.WriteCell(gI_CurrentBatch);
     pack.WriteCell(hArray.Length);
 
+    // /bulk_records is Json<Vec<RecordForm>>, i.e. a bare array - don't wrap.
     DebugPrint("Sending batch %d with %d records", gI_CurrentBatch + 1, hArray.Length);
-    hHTTPRequest.Post(hRecordsList, Callback_OnBatchSent, pack);
+    hHTTPRequest.Post(hArray, Callback_OnBatchSent, pack);
 
-    delete hRecordsList;
+    delete hArray;
 }
 
 public void Callback_OnBatchSent(HTTPResponse resp, any value)
@@ -324,6 +324,13 @@ void FinishBatchProcessing()
     if (gA_AllRecords != null)
     {
         DebugPrint("Cleaning up %d records from ArrayList", gA_AllRecords.Length);
+        // ArrayList stores the handle values; deleting the list doesn't close
+        // the per-row JSONObjects, so walk and delete them first.
+        for (int i = 0; i < gA_AllRecords.Length; i++)
+        {
+            JSONObject hJSON = view_as<JSONObject>(gA_AllRecords.Get(i));
+            delete hJSON;
+        }
         delete gA_AllRecords;
         gA_AllRecords = null;
     }

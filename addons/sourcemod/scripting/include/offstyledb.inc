@@ -209,6 +209,11 @@ public void OnPluginEnd()
     if (gA_AllRecords != null)
     {
         DebugPrint("Cleaning up AllRecords ArrayList");
+        for (int i = 0; i < gA_AllRecords.Length; i++)
+        {
+            JSONObject hJSON = view_as<JSONObject>(gA_AllRecords.Get(i));
+            delete hJSON;
+        }
         delete gA_AllRecords;
         gA_AllRecords = null;
     }
