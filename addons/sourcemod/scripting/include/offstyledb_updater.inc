@@ -283,8 +283,8 @@ void Updater_CheckBuildMatch()
     Updater_SwitchToBuild(running);
 }
 
-// Fetches the latest release and downloads the OTHER build's .smx asset, then
-// loads it and unloads self.
+// Uses the /releases/latest/download/<asset> redirect instead of the API so a
+// truncated JSON response can't strand us with gB_BuildMismatch set forever.
 void Updater_SwitchToBuild(int targetVersion)
 {
     if (gB_UpdateInFlight)
@@ -293,61 +293,17 @@ void Updater_SwitchToBuild(int targetVersion)
     }
     gB_UpdateInFlight = true;
 
-    HTTPRequest req = new HTTPRequest(UPDATER_API_URL);
-    req.SetHeader("Accept", "application/vnd.github+json");
-    req.SetHeader("User-Agent", "offstyledb-updater");
-    req.Get(Callback_OnSwitchReleaseInfo, targetVersion);
-}
-
-public void Callback_OnSwitchReleaseInfo(HTTPResponse resp, any value)
-{
-    int targetVersion = value;
-
-    if (resp.Status != HTTPStatus_OK || resp.Data == null)
-    {
-        DebugPrint("Build-switch: GitHub API failed (status=%d)", resp.Status);
-        gB_UpdateInFlight = false;
-        return;
-    }
-
     char targetSmx[64];
     BuildSmxNameForVersion(targetVersion, targetSmx, sizeof(targetSmx));
 
-    JSONObject data     = view_as<JSONObject>(resp.Data);
-    JSONArray  assets   = view_as<JSONArray>(data.Get("assets"));
-    char       downloadUrl[256];
-    downloadUrl[0] = '\0';
-
-    if (assets != null)
-    {
-        for (int i = 0; i < assets.Length; i++)
-        {
-            JSONObject asset = view_as<JSONObject>(assets.Get(i));
-            char name[64];
-            asset.GetString("name", name, sizeof(name));
-
-            if (StrEqual(name, targetSmx))
-            {
-                asset.GetString("browser_download_url", downloadUrl, sizeof(downloadUrl));
-                delete asset;
-                break;
-            }
-
-            delete asset;
-        }
-    }
-    delete assets;
-    delete data;
-
-    if (downloadUrl[0] == '\0')
-    {
-        DebugPrint("Build-switch: no %s asset in the latest release", targetSmx);
-        gB_UpdateInFlight = false;
-        return;
-    }
+    char downloadUrl[256];
+    FormatEx(downloadUrl, sizeof(downloadUrl),
+        "https://github.com/offstyles/offstyle-plugins/releases/latest/download/%s", targetSmx);
 
     char stagePath[PLATFORM_MAX_PATH];
     BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/%s.new", targetSmx);
+
+    DebugPrint("Build-switch: downloading %s from %s", targetSmx, downloadUrl);
 
     HTTPRequest dl = new HTTPRequest(downloadUrl);
     dl.SetHeader("User-Agent", "offstyledb-updater");
