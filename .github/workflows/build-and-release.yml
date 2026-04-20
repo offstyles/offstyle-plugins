@@ -102,6 +102,10 @@ jobs:
           cp addons/sourcemod/plugins/offstyledb.smx ../offstyledb.smx
           cp addons/sourcemod/plugins/offstyledb_v3.smx ../offstyledb_v3.smx
           cd ..
+          # Tiny version file for the autoupdater: avoids hitting the GitHub API
+          # and dodges ripext JSON-parse failures on truncated responses.
+          raw_tag="${{ github.ref_name }}"
+          printf '%s' "${raw_tag#v}" > version.txt
           echo "zip_file=$zip_name" >> $GITHUB_ENV
 
       - name: Generate changelog
@@ -151,7 +155,7 @@ jobs:
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
-          artifacts: "*.zip,offstyledb.smx,offstyledb_v3.smx"
+          artifacts: "*.zip,offstyledb.smx,offstyledb_v3.smx,version.txt"
           draft: false
           prerelease: false
 

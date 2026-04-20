@@ -10,8 +10,8 @@
 // "dev" for local/untagged builds — CI rewrites this line before compile.
 #define PLUGIN_VERSION "dev"
 
-#define UPDATER_API_URL     "https://api.github.com/repos/offstyles/offstyle-plugins/releases/latest"
-#define UPDATER_CHECK_EVERY 21600.0    // 6 hours
+#define UPDATER_RELEASES_BASE "https://github.com/offstyles/offstyle-plugins/releases/latest/download"
+#define UPDATER_CHECK_EVERY   21600.0    // 6 hours
 
 #if defined SHAVIT_V3
  #define UPDATER_SMX_NAME "offstyledb_v3.smx"
@@ -67,102 +67,82 @@ void Updater_CheckForUpdate(bool silent)
 
     gB_UpdateInFlight = true;
 
-    HTTPRequest req = new HTTPRequest(UPDATER_API_URL);
-    req.SetHeader("Accept", "application/vnd.github+json");
+    char versionPath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, versionPath, sizeof(versionPath), "data/osdb_version.txt");
+
+    HTTPRequest req = new HTTPRequest(UPDATER_RELEASES_BASE ... "/version.txt");
     req.SetHeader("User-Agent", "offstyledb-updater");
-    req.Get(Callback_OnLatestRelease, silent ? 1 : 0);
+    req.DownloadFile(versionPath, Callback_OnVersionFileDownloaded, silent ? 1 : 0);
 }
 
-public void Callback_OnLatestRelease(HTTPResponse resp, any value)
+// Reads the tag from the release's version.txt asset instead of the GitHub API
+// so ripext's JSON parser can't blow up on a truncated response.
+public void Callback_OnVersionFileDownloaded(HTTPStatus status, any value)
 {
     bool silent = (value == 1);
 
-    if (resp.Status != HTTPStatus_OK || resp.Data == null)
+    if (status != HTTPStatus_OK)
     {
-        DebugPrint("Update check failed: status = %d", resp.Status);
+        DebugPrint("Update check failed: status = %d", status);
         gB_UpdateInFlight = false;
         return;
     }
 
-    JSONObject data = view_as<JSONObject>(resp.Data);
-    char       tag[32];
+    char versionPath[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, versionPath, sizeof(versionPath), "data/osdb_version.txt");
 
-    if (!data.GetString("tag_name", tag, sizeof(tag)))
+    File f = OpenFile(versionPath, "r");
+    if (f == null)
     {
-        DebugPrint("Update check: response missing tag_name");
-        delete data;
+        DebugPrint("Update check: could not open %s", versionPath);
         gB_UpdateInFlight = false;
         return;
     }
 
-    strcopy(gS_LatestTag, sizeof(gS_LatestTag), tag);
+    char tag[32];
+    f.ReadString(tag, sizeof(tag));
+    delete f;
+    DeleteFile(versionPath);
 
-    // strip leading 'v' so "v5" compares as "5"
-    int  tagOffset = (tag[0] == 'v' || tag[0] == 'V') ? 1 : 0;
-    bool newer    = !StrEqual(tag[tagOffset], PLUGIN_VERSION);
+    TrimString(tag);
+    if (tag[0] == '\0')
+    {
+        DebugPrint("Update check: version file was empty");
+        gB_UpdateInFlight = false;
+        return;
+    }
 
-    DebugPrint("Latest release tag: %s (current: %s)", tag, PLUGIN_VERSION);
+    int tagOffset = (tag[0] == 'v' || tag[0] == 'V') ? 1 : 0;
+    strcopy(gS_LatestTag, sizeof(gS_LatestTag), tag[tagOffset]);
 
-    if (!newer)
+    DebugPrint("Latest release version: %s (current: %s)", gS_LatestTag, PLUGIN_VERSION);
+
+    if (StrEqual(gS_LatestTag, PLUGIN_VERSION))
     {
         if (!silent)
         {
             PrintToServer("[OSdb] Already up to date (version %s).", PLUGIN_VERSION);
         }
-        delete data;
         gB_UpdateInFlight = false;
         return;
     }
 
-    PrintToServer("[OSdb] New version available: %s (current: %s)", tag, PLUGIN_VERSION);
-    LogMessage("[OSdb] New version available: %s (current: %s)", tag, PLUGIN_VERSION);
+    PrintToServer("[OSdb] New version available: %s (current: %s)", gS_LatestTag, PLUGIN_VERSION);
+    LogMessage("[OSdb] New version available: %s (current: %s)", gS_LatestTag, PLUGIN_VERSION);
 
     if (gCV_AutoUpdate.IntValue < 2)
     {
-        PrintToServer("[OSdb] Set OSdb_autoupdate 2 to auto-download, or update manually: https://github.com/offstyles/offstyle-plugins/releases/tag/%s", tag);
-        delete data;
+        PrintToServer("[OSdb] Set OSdb_autoupdate 2 to auto-download, or update manually: https://github.com/offstyles/offstyle-plugins/releases/tag/v%s", gS_LatestTag);
         gB_UpdateInFlight = false;
         return;
     }
-
-    char      downloadUrl[256];
-    downloadUrl[0]   = '\0';
-    JSONArray assets = view_as<JSONArray>(data.Get("assets"));
-
-    if (assets != null)
-    {
-        for (int i = 0; i < assets.Length; i++)
-        {
-            JSONObject asset = view_as<JSONObject>(assets.Get(i));
-            char name[64];
-            asset.GetString("name", name, sizeof(name));
-
-            if (StrEqual(name, UPDATER_SMX_NAME))
-            {
-                asset.GetString("browser_download_url", downloadUrl, sizeof(downloadUrl));
-                delete asset;
-                break;
-            }
-
-            delete asset;
-        }
-    }
-    delete assets;
-    delete data;
-
-    if (downloadUrl[0] == '\0')
-    {
-        DebugPrint("Update check: no %s asset in release %s", UPDATER_SMX_NAME, tag);
-        gB_UpdateInFlight = false;
-        return;
-    }
-
-    DebugPrint("Downloading %s from %s", UPDATER_SMX_NAME, downloadUrl);
 
     char stagePath[PLATFORM_MAX_PATH];
     BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/" ... UPDATER_SMX_NAME ... ".new");
 
-    HTTPRequest dl = new HTTPRequest(downloadUrl);
+    DebugPrint("Downloading %s from %s/%s", UPDATER_SMX_NAME, UPDATER_RELEASES_BASE, UPDATER_SMX_NAME);
+
+    HTTPRequest dl = new HTTPRequest(UPDATER_RELEASES_BASE ... "/" ... UPDATER_SMX_NAME);
     dl.SetHeader("User-Agent", "offstyledb-updater");
     dl.DownloadFile(stagePath, Callback_OnSMXDownloaded);
 }
@@ -297,8 +277,7 @@ void Updater_SwitchToBuild(int targetVersion)
     BuildSmxNameForVersion(targetVersion, targetSmx, sizeof(targetSmx));
 
     char downloadUrl[256];
-    FormatEx(downloadUrl, sizeof(downloadUrl),
-        "https://github.com/offstyles/offstyle-plugins/releases/latest/download/%s", targetSmx);
+    FormatEx(downloadUrl, sizeof(downloadUrl), UPDATER_RELEASES_BASE ... "/%s", targetSmx);
 
     char stagePath[PLATFORM_MAX_PATH];
     BuildPath(Path_SM, stagePath, sizeof(stagePath), "plugins/%s.new", targetSmx);
