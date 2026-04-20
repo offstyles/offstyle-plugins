@@ -163,11 +163,8 @@ int ShavitCompat_BuildVersion()
 #endif
 }
 
-// Runtime detection of the shavit major version actually loaded on the server.
-// Iterates the loaded plugins and reads the version string of the first one
-// whose name contains "shavit". Submodules share the core major version so any
-// match is fine. Falls back to the build version if no shavit plugin is
-// detectable, to avoid triggering a spurious mismatch.
+// Reads the major from "[shavit] Core" exactly - looser matches picked up
+// third-party plugins like "[Shavit BASH 2 FIX]" (3.1) and misdetected.
 int ShavitCompat_DetectRunningVersion()
 {
     Handle iter   = GetPluginIterator();
@@ -179,7 +176,7 @@ int ShavitCompat_DetectRunningVersion()
         char   pname[128];
         GetPluginInfo(plugin, PlInfo_Name, pname, sizeof(pname));
 
-        if (StrContains(pname, "shavit", false) == -1)
+        if (!StrEqual(pname, "[shavit] Core"))
         {
             continue;
         }
@@ -190,8 +187,8 @@ int ShavitCompat_DetectRunningVersion()
         if (major == 3 || major == 4)
         {
             result = major;
-            break;
         }
+        break;
     }
 
     delete iter;
