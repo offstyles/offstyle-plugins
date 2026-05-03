@@ -44,10 +44,8 @@ jobs:
       - name: Download shavit includes
         shell: bash
         run: |
+          # Kept outside the project tree so they don't end up in the release zip.
           git clone --depth 1 https://github.com/shavitush/bhoptimer.git /tmp/bhoptimer
-          mkdir -p addons/sourcemod/scripting/include
-          cp -r /tmp/bhoptimer/addons/sourcemod/scripting/include/* addons/sourcemod/scripting/include/
-          rm -rf /tmp/bhoptimer
 
       - name: Inject release version
         shell: bash
@@ -65,7 +63,7 @@ jobs:
           mkdir -p plugins
           for src in $(find scripting -maxdepth 1 -type f -name "*.sp");
           do
-            spcomp $src -o=plugins/$(basename $src .sp)'.smx' -i=scripting/include -v2
+            spcomp $src -o=plugins/$(basename $src .sp)'.smx' -i=scripting/include -i=/tmp/bhoptimer/addons/sourcemod/scripting/include -v2
           done
 
       - name: Upload artifact
