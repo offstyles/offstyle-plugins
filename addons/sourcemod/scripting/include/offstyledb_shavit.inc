@@ -242,7 +242,7 @@ public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float tim
 
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
 {
-	if (istoolong)
+	if (istoolong || replaypaths == null || replaypaths.Length == 0)
 	{
 		return;
 	}
