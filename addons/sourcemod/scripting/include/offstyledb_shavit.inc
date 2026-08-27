@@ -242,7 +242,7 @@ public void Shavit_AddAdditionalReplayPathsHere(int client, int style, float tim
 
 public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, int strafes, float sync, int track, float oldtime, float perfs, float avgvel, float maxvel, int timestamp, bool isbestreplay, bool istoolong, ArrayList replaypaths, ArrayList frames, int preframes, int postframes, const char[] name)
 {
-	if(istoolong)
+	if (istoolong)
 	{
 		return;
 	}
@@ -252,23 +252,23 @@ public void Shavit_OnReplaySaved(int client, int style, float time, int jumps, i
 	// our temp dir - other plugins may register their own extra replay paths too.
 	bool isOurCopy = false;
 
-	if(isbestreplay)
+	if (isbestreplay)
 	{
 		replaypaths.GetString(0, replayPath, sizeof(replayPath));
 	}
 	else
 	{
-		for(int i = 0; i < replaypaths.Length; i++)
+		for (int i = 0; i < replaypaths.Length; i++)
 		{
 			replaypaths.GetString(i, replayPath, sizeof(replayPath));
-			if(IsTempReplayPath(replayPath))
+			if (IsTempReplayPath(replayPath))
 			{
 				isOurCopy = true;
 				break;
 			}
 		}
 
-		if(!isOurCopy)
+		if (!isOurCopy)
 		{
 			return;
 		}
